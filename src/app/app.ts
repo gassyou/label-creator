@@ -1,12 +1,10 @@
-import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Component } from '@angular/core';
+import { EditorComponent } from './editor/editor';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [EditorComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss'
 })
-export class App {
-  protected readonly title = signal('angular-editor-fabric-js-ng21');
-}
+export class App {}

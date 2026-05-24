@@ -1,0 +1,70 @@
+<section class="editor-shell">
+  <app-editor-topbar
+    [hasSelection]="propsPanelVisible()"
+    [zoom]="canvasService.zoom()"
+    (saveRequested)="saveCanvasToJSON()"
+    (loadRequested)="loadCanvasFromJSON()"
+    (jsonRequested)="rasterizeJSON()"
+    (svgRequested)="rasterizeSVG()"
+    (pngRequested)="rasterize()"
+    (pdfRequested)="exportPdf()"
+    (zoomInRequested)="zoomIn()"
+    (zoomOutRequested)="zoomOut()"
+    (cloneRequested)="cloneSelection()"
+    (bringFrontRequested)="bringSelectionToFront()"
+    (sendBackRequested)="sendSelectionToBack()"
+    (unselectRequested)="clearSelection()"
+    (deleteRequested)="removeSelected()"
+  />
+
+  <div class="workspace">
+    <aside class="left-shell">
+      <app-editor-tool-strip
+        [activeTool]="activeTool()"
+        (toolSelected)="activateTool($event)"
+      />
+    </aside>
+
+    <section class="stage-panel">
+      <div class="canvas-stage">
+        <div class="canvas-frame">
+          <canvas id="canvas" #htmlCanvas></canvas>
+        </div>
+      </div>
+    </section>
+
+    <app-editor-properties-panel
+      [canvasState]="canvasState()"
+      [pages]="pages()"
+      [activePage]="activePage()"
+      [activePageId]="activePage().id"
+      [pageSizePresets]="pageSizePresets"
+      [selectionState]="selectionState()"
+      [textEditorVisible]="textEditorVisible()"
+      [figureEditorVisible]="figureEditorVisible()"
+      [propsPanelVisible]="propsPanelVisible()"
+      [jsonPreview]="jsonPreview()"
+      (pageSelected)="selectPage($event)"
+      (pageAdded)="addPage()"
+      (pageDuplicated)="duplicatePage()"
+      (pageRemoved)="removePage($event)"
+      (pagePresetChanged)="updatePagePreset($event)"
+      (pageWidthChanged)="updatePageWidthMm($event)"
+      (pageHeightChanged)="updatePageHeightMm($event)"
+      (canvasFillChanged)="updateCanvasFill($event)"
+      (canvasImageChanged)="updateCanvasImage($event)"
+      (applyCanvasImageRequested)="applyCanvasImage()"
+      (idChanged)="updateSelectionId($event)"
+      (opacityChanged)="updateSelectionOpacity($event)"
+      (fillChanged)="updateSelectionFill($event)"
+      (fontFamilyChanged)="updateSelectionFontFamily($event)"
+      (textAlignChanged)="updateSelectionTextAlign($event)"
+      (boldToggled)="toggleBold()"
+      (italicToggled)="toggleItalic()"
+      (textDecorationToggled)="toggleTextDecoration($event)"
+      (fontSizeChanged)="updateSelectionFontSize($event)"
+      (lineHeightChanged)="updateSelectionLineHeight($event)"
+      (charSpacingChanged)="updateSelectionCharSpacing($event)"
+    />
+  </div>
+</section>

@@ -1,0 +1,96 @@
+.editor-shell {
+  min-height: 100vh;
+  background: #f3f4f6;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 320px;
+  min-height: calc(100vh - 64px);
+}
+
+.left-shell {
+  border-right: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.stage-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #f3f4f6;
+}
+
+.canvas-stage {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.frame-label {
+  flex-shrink: 0;
+  padding-left: 6px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.canvas-frame {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  padding: 32px;
+  border: 1px solid #e5e7eb;
+  background:
+    linear-gradient(45deg, rgba(148, 163, 184, 0.08) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(148, 163, 184, 0.08) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.08) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.08) 75%),
+    #eef2f7;
+  background-size: 24px 24px;
+  background-position:
+    0 0,
+    0 12px,
+    12px -12px,
+    -12px 0;
+}
+
+#canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(var(--canvas-zoom, 1));
+  transform-origin: center center;
+  border: 1px solid #d1d5db;
+  background: #fff;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}

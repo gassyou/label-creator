@@ -1,0 +1,168 @@
+.right-rail {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 16px;
+  border-left: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.rail-panel {
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+}
+
+.rail-panel h2 {
+  margin: 0 0 14px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #111827;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+label span {
+  font-size: 0.82rem;
+  color: #4b5563;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input[type='text'],
+input[type='number'],
+select {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px solid #d7dde7;
+  border-radius: 12px;
+  background: #fff;
+  color: #111827;
+}
+
+input[type='color'] {
+  width: 100%;
+  height: 42px;
+  padding: 4px;
+  border: 1px solid #d7dde7;
+  border-radius: 12px;
+  background: #fff;
+}
+
+input[type='range'] {
+  width: 100%;
+}
+
+button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #f8fafc;
+  color: #1f2937;
+}
+
+button.secondary.active,
+.segmented button.active {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.wide {
+  width: 100%;
+}
+
+.page-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.page-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.page-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #dbe4f0;
+}
+
+.page-card.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  box-shadow: inset 0 0 0 1px #bfdbfe;
+}
+
+.page-card__title {
+  font-weight: 700;
+}
+
+.page-card__meta {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.property-stack {
+  display: grid;
+}
+
+.inline-actions,
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.segmented button {
+  background: #fff;
+  color: #4b5563;
+}
+
+.muted {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.json-panel pre {
+  margin: 0;
+  overflow: auto;
+  max-height: 280px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .right-rail {
+    border-left: 0;
+  }
+}

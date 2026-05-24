@@ -1,0 +1,98 @@
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">LP</div>
+    <div class="brand-copy">
+      <p class="eyebrow">Label Designer</p>
+      <h1>标签模板设计器</h1>
+    </div>
+  </div>
+
+  <div ngToolbar class="command-toolbar" aria-label="Canvas actions">
+    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Document actions">
+      <button type="button" ngToolbarWidget value="save-local" class="toolbar-button ghost" (click)="saveRequested.emit()">
+        Save Local
+      </button>
+      <button type="button" ngToolbarWidget value="load-local" class="toolbar-button ghost" (click)="loadRequested.emit()">
+        Load Local
+      </button>
+      <button type="button" ngToolbarWidget value="json-preview" class="toolbar-button ghost" (click)="jsonRequested.emit()">
+        JSON
+      </button>
+    </div>
+
+    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Zoom controls">
+      <button type="button" ngToolbarWidget value="zoom-out" class="toolbar-button ghost" (click)="zoomOutRequested.emit()">
+        −
+      </button>
+      <span class="zoom-display">{{ (zoom() * 100).toFixed(0) }}%</span>
+      <button type="button" ngToolbarWidget value="zoom-in" class="toolbar-button ghost" (click)="zoomInRequested.emit()">
+        +
+      </button>
+    </div>
+
+    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Export actions">
+      <button type="button" ngToolbarWidget value="export-svg" class="toolbar-button ghost" (click)="svgRequested.emit()">
+        SVG
+      </button>
+      <button type="button" ngToolbarWidget value="export-png" class="toolbar-button primary" (click)="pngRequested.emit()">
+        PNG
+      </button>
+      <button type="button" ngToolbarWidget value="export-pdf" class="toolbar-button ghost" (click)="pdfRequested.emit()">
+        PDF
+      </button>
+    </div>
+
+    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Selection actions">
+      <button
+        type="button"
+        ngToolbarWidget
+        value="clone-selection"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        (click)="cloneRequested.emit()"
+      >
+        Clone
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="bring-front"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        (click)="bringFrontRequested.emit()"
+      >
+        Bring Front
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="send-back"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        (click)="sendBackRequested.emit()"
+      >
+        Send Back
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="unselect"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        (click)="unselectRequested.emit()"
+      >
+        Unselect
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="delete-selection"
+        class="toolbar-button danger"
+        [disabled]="!hasSelection()"
+        (click)="deleteRequested.emit()"
+      >
+        Delete
+      </button>
+    </div>
+  </div>
+</header>

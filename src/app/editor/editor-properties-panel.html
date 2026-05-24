@@ -1,0 +1,241 @@
+<aside class="right-rail">
+  <section class="rail-panel">
+    <h2>Document</h2>
+
+    <div class="page-actions">
+      <button type="button" class="secondary" (click)="pageAdded.emit()">Add Page</button>
+      <button type="button" class="secondary" (click)="pageDuplicated.emit()">Duplicate</button>
+    </div>
+
+    <div class="page-list" role="list" aria-label="Document pages">
+      @for (page of pages(); track page.id) {
+        <button
+          type="button"
+          class="page-card"
+          [class.active]="page.id === activePageId()"
+          (click)="pageSelected.emit(page.id)"
+        >
+          <span class="page-card__title">{{ page.name }}</span>
+          <span class="page-card__meta">{{ page.widthMm }} × {{ page.heightMm }} mm</span>
+          <span class="page-card__meta">{{ page.canvasState.width }} × {{ page.canvasState.height }} px</span>
+        </button>
+      }
+    </div>
+
+    @if (pages().length > 1) {
+      <button type="button" class="danger wide" (click)="pageRemoved.emit(activePageId())">
+        Remove Active Page
+      </button>
+    }
+  </section>
+
+  <section class="rail-panel">
+    <h2>Page Setup</h2>
+    @if (pages().length) {
+      <label>
+        <span>Paper Preset</span>
+        <select
+          [ngModel]="activePage().presetId"
+          (ngModelChange)="pagePresetChanged.emit($event)"
+        >
+          @for (preset of pageSizePresets(); track preset.id) {
+            <option [value]="preset.id">{{ preset.name }}</option>
+          }
+        </select>
+      </label>
+
+      <label>
+        <span>Width (mm)</span>
+        <input
+          type="number"
+          min="20"
+          [ngModel]="activePage().widthMm"
+          (ngModelChange)="pageWidthChanged.emit($event)"
+        />
+      </label>
+
+      <label>
+        <span>Height (mm)</span>
+        <input
+          type="number"
+          min="20"
+          [ngModel]="activePage().heightMm"
+          (ngModelChange)="pageHeightChanged.emit($event)"
+        />
+      </label>
+    }
+  </section>
+
+  <section class="rail-panel">
+    <h2>Canvas</h2>
+    <p class="muted">
+      Active page raster size: {{ canvasState().width }} × {{ canvasState().height }} px
+    </p>
+    <label>
+      <span>Background Color</span>
+      <input
+        type="color"
+        [ngModel]="canvasState().backgroundColor"
+        (ngModelChange)="canvasFillChanged.emit($event)"
+      />
+    </label>
+    <label>
+      <span>Background Image URL</span>
+      <input
+        type="text"
+        [ngModel]="canvasState().backgroundImage"
+        (ngModelChange)="canvasImageChanged.emit($event)"
+        placeholder="https://..."
+      />
+    </label>
+    <button type="button" class="secondary wide" (click)="applyCanvasImageRequested.emit()">
+      Apply Background
+    </button>
+  </section>
+
+  <section class="rail-panel">
+    <h2>Selection</h2>
+    @if (!propsPanelVisible()) {
+      <p class="muted">Select an object on the canvas to edit its properties.</p>
+    }
+
+    @if (propsPanelVisible()) {
+      <div class="property-stack">
+        <label>
+          <span>ID</span>
+          <input
+            type="text"
+            [ngModel]="selectionState().id"
+            (ngModelChange)="idChanged.emit($event)"
+          />
+        </label>
+        <label>
+          <span>Opacity {{ selectionState().opacity }}%</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            [ngModel]="selectionState().opacity"
+            (ngModelChange)="opacityChanged.emit($event)"
+          />
+        </label>
+
+        @if (textEditorVisible() || figureEditorVisible()) {
+          <label>
+            <span>Fill</span>
+            <input
+              type="color"
+              [ngModel]="selectionState().fill"
+              (ngModelChange)="fillChanged.emit($event)"
+            />
+          </label>
+        }
+
+        @if (textEditorVisible()) {
+          <label>
+            <span>Font Family</span>
+            <select
+              [ngModel]="selectionState().fontFamily"
+              (ngModelChange)="fontFamilyChanged.emit($event)"
+            >
+              <option value="Arial">Arial</option>
+              <option value="Helvetica">Helvetica</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Roboto">Roboto</option>
+              <option value="Open Sans">Open Sans</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Pacifico">Pacifico</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Text Align</span>
+            <div class="segmented">
+              @for (align of ['left', 'center', 'right', 'justify']; track align) {
+                <button
+                  type="button"
+                  [class.active]="selectionState().textAlign === align"
+                  (click)="textAlignChanged.emit(align)"
+                >
+                  {{ align === 'justify' ? 'Justify' : align | titlecase }}
+                </button>
+              }
+            </div>
+          </label>
+
+          <div class="inline-actions">
+            <button
+              type="button"
+              class="secondary"
+              [class.active]="selectionState().fontWeight === 'bold'"
+              (click)="boldToggled.emit()"
+            >
+              Bold
+            </button>
+            <button
+              type="button"
+              class="secondary"
+              [class.active]="selectionState().fontStyle === 'italic'"
+              (click)="italicToggled.emit()"
+            >
+              Italic
+            </button>
+            <button
+              type="button"
+              class="secondary"
+              [class.active]="selectionState().textDecoration.includes('underline')"
+              (click)="textDecorationToggled.emit('underline')"
+            >
+              Underline
+            </button>
+            <button
+              type="button"
+              class="secondary"
+              [class.active]="selectionState().textDecoration.includes('line-through')"
+              (click)="textDecorationToggled.emit('line-through')"
+            >
+              Strike
+            </button>
+          </div>
+
+          <label>
+            <span>Font Size</span>
+            <input
+              type="number"
+              min="8"
+              [ngModel]="selectionState().fontSize"
+              (ngModelChange)="fontSizeChanged.emit($event)"
+            />
+          </label>
+          <label>
+            <span>Line Height</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0.5"
+              [ngModel]="selectionState().lineHeight"
+              (ngModelChange)="lineHeightChanged.emit($event)"
+            />
+          </label>
+          <label>
+            <span>Character Spacing</span>
+            <input
+              type="number"
+              step="10"
+              [ngModel]="selectionState().charSpacing"
+              (ngModelChange)="charSpacingChanged.emit($event)"
+            />
+          </label>
+        }
+      </div>
+    }
+  </section>
+
+  @if (jsonPreview()) {
+    <section class="rail-panel json-panel">
+      <h2>Canvas JSON</h2>
+      <pre>{{ jsonPreview() }}</pre>
+    </section>
+  }
+</aside>
