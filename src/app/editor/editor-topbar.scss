@@ -124,6 +124,15 @@ h1 {
   color: #be123c;
 }
 
+.toolbar-button {
+  span[nz-icon] {
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
 .toolbar-button[aria-disabled='true'],
 .toolbar-button:disabled {
   opacity: 0.48;

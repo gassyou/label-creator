@@ -9,33 +9,33 @@
 
   <div ngToolbar class="command-toolbar" aria-label="Canvas actions">
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Document actions">
-      <button type="button" ngToolbarWidget value="save-local" class="toolbar-button ghost" (click)="saveRequested.emit()">
-        Save Local
+      <button type="button" ngToolbarWidget value="save-local" class="toolbar-button ghost" title="Save Local" (click)="saveRequested.emit()">
+        <span nz-icon nzType="save" nzTheme="outline"></span>
       </button>
-      <button type="button" ngToolbarWidget value="load-local" class="toolbar-button ghost" (click)="loadRequested.emit()">
-        Load Local
+      <button type="button" ngToolbarWidget value="load-local" class="toolbar-button ghost" title="Load Local" (click)="loadRequested.emit()">
+        <span nz-icon nzType="folder-open" nzTheme="outline"></span>
       </button>
     </div>
 
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Zoom controls">
-      <button type="button" ngToolbarWidget value="zoom-out" class="toolbar-button ghost" (click)="zoomOutRequested.emit()">
-        −
+      <button type="button" ngToolbarWidget value="zoom-out" class="toolbar-button ghost" title="Zoom Out" (click)="zoomOutRequested.emit()">
+        <span nz-icon nzType="zoom-out" nzTheme="outline"></span>
       </button>
       <span class="zoom-display">{{ (zoom() * 100).toFixed(0) }}%</span>
-      <button type="button" ngToolbarWidget value="zoom-in" class="toolbar-button ghost" (click)="zoomInRequested.emit()">
-        +
+      <button type="button" ngToolbarWidget value="zoom-in" class="toolbar-button ghost" title="Zoom In" (click)="zoomInRequested.emit()">
+        <span nz-icon nzType="zoom-in" nzTheme="outline"></span>
       </button>
     </div>
 
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Export actions">
-      <button type="button" ngToolbarWidget value="export-svg" class="toolbar-button ghost" (click)="svgRequested.emit()">
-        SVG
+      <button type="button" ngToolbarWidget value="export-svg" class="toolbar-button ghost" title="Export SVG" (click)="svgRequested.emit()">
+        <span nz-icon nzType="export" nzTheme="outline"></span>
       </button>
-      <button type="button" ngToolbarWidget value="export-png" class="toolbar-button primary" (click)="pngRequested.emit()">
-        PNG
+      <button type="button" ngToolbarWidget value="export-png" class="toolbar-button primary" title="Export PNG" (click)="pngRequested.emit()">
+        <span nz-icon nzType="file-image" nzTheme="outline"></span>
       </button>
-      <button type="button" ngToolbarWidget value="export-pdf" class="toolbar-button ghost" (click)="pdfRequested.emit()">
-        PDF
+      <button type="button" ngToolbarWidget value="export-pdf" class="toolbar-button ghost" title="Export PDF" (click)="pdfRequested.emit()">
+        <span nz-icon nzType="file-pdf" nzTheme="outline"></span>
       </button>
     </div>
 
@@ -46,9 +46,10 @@
         value="clone-selection"
         class="toolbar-button ghost"
         [disabled]="!hasSelection()"
+        title="Clone"
         (click)="cloneRequested.emit()"
       >
-        Clone
+        <span nz-icon nzType="copy" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -56,9 +57,10 @@
         value="bring-front"
         class="toolbar-button ghost"
         [disabled]="!hasSelection()"
+        title="Bring Front"
         (click)="bringFrontRequested.emit()"
       >
-        Bring Front
+        <span nz-icon nzType="arrow-up" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -66,19 +68,10 @@
         value="send-back"
         class="toolbar-button ghost"
         [disabled]="!hasSelection()"
+        title="Send Back"
         (click)="sendBackRequested.emit()"
       >
-        Send Back
-      </button>
-      <button
-        type="button"
-        ngToolbarWidget
-        value="unselect"
-        class="toolbar-button ghost"
-        [disabled]="!hasSelection()"
-        (click)="unselectRequested.emit()"
-      >
-        Unselect
+        <span nz-icon nzType="arrow-down" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -86,9 +79,10 @@
         value="delete-selection"
         class="toolbar-button danger"
         [disabled]="!hasSelection()"
+        title="Delete"
         (click)="deleteRequested.emit()"
       >
-        Delete
+        <span nz-icon nzType="delete" nzTheme="outline"></span>
       </button>
     </div>
 
@@ -102,7 +96,7 @@
         title="Align Left"
         (click)="alignLeftRequested.emit()"
       >
-        ⬅
+        <span nz-icon nzType="align-left" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -113,7 +107,7 @@
         title="Align Center Horizontally"
         (click)="alignCenterHRequested.emit()"
       >
-        ⬌
+        <span nz-icon nzType="align-center" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -124,7 +118,7 @@
         title="Align Right"
         (click)="alignRightRequested.emit()"
       >
-        ➡
+        <span nz-icon nzType="align-right" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -135,7 +129,7 @@
         title="Align Top"
         (click)="alignTopRequested.emit()"
       >
-        ⬆
+        <span nz-icon nzType="vertical-align-top" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -146,7 +140,7 @@
         title="Align Center Vertically"
         (click)="alignCenterVRequested.emit()"
       >
-        ⬍
+        <span nz-icon nzType="vertical-align-middle" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -157,7 +151,7 @@
         title="Align Bottom"
         (click)="alignBottomRequested.emit()"
       >
-        ⬇
+        <span nz-icon nzType="vertical-align-bottom" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -168,7 +162,7 @@
         title="Distribute Horizontally"
         (click)="distributeHRequested.emit()"
       >
-        ⇄
+        <span nz-icon nzType="column-width" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -179,7 +173,7 @@
         title="Distribute Vertically"
         (click)="distributeVRequested.emit()"
       >
-        ⇅
+        <span nz-icon nzType="column-height" nzTheme="outline"></span>
       </button>
     </div>
   </div>

@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { Toolbar, ToolbarWidget, ToolbarWidgetGroup } from '@angular/aria/toolbar';
+import { NzIconModule } from 'ng-zorro-antd/icon';
 
 @Component({
   selector: 'app-editor-topbar',
-  imports: [Toolbar, ToolbarWidget, ToolbarWidgetGroup],
+  imports: [Toolbar, ToolbarWidget, ToolbarWidgetGroup, NzIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor-topbar.html',
   styleUrl: './editor-topbar.scss'
@@ -23,7 +24,6 @@ export class EditorTopbarComponent {
   readonly cloneRequested = output<void>();
   readonly bringFrontRequested = output<void>();
   readonly sendBackRequested = output<void>();
-  readonly unselectRequested = output<void>();
   readonly deleteRequested = output<void>();
   readonly alignLeftRequested = output<void>();
   readonly alignCenterHRequested = output<void>();
