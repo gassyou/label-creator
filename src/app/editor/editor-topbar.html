@@ -15,9 +15,6 @@
       <button type="button" ngToolbarWidget value="load-local" class="toolbar-button ghost" (click)="loadRequested.emit()">
         Load Local
       </button>
-      <button type="button" ngToolbarWidget value="json-preview" class="toolbar-button ghost" (click)="jsonRequested.emit()">
-        JSON
-      </button>
     </div>
 
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Zoom controls">
@@ -92,6 +89,97 @@
         (click)="deleteRequested.emit()"
       >
         Delete
+      </button>
+    </div>
+
+    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Alignment actions">
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-left"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Left"
+        (click)="alignLeftRequested.emit()"
+      >
+        ⬅
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-center-h"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Center Horizontally"
+        (click)="alignCenterHRequested.emit()"
+      >
+        ⬌
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-right"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Right"
+        (click)="alignRightRequested.emit()"
+      >
+        ➡
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-top"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Top"
+        (click)="alignTopRequested.emit()"
+      >
+        ⬆
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-center-v"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Center Vertically"
+        (click)="alignCenterVRequested.emit()"
+      >
+        ⬍
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-bottom"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Bottom"
+        (click)="alignBottomRequested.emit()"
+      >
+        ⬇
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="distribute-h"
+        class="toolbar-button ghost"
+        [disabled]="!hasMultiSelection()"
+        title="Distribute Horizontally"
+        (click)="distributeHRequested.emit()"
+      >
+        ⇄
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="distribute-v"
+        class="toolbar-button ghost"
+        [disabled]="!hasMultiSelection()"
+        title="Distribute Vertically"
+        (click)="distributeVRequested.emit()"
+      >
+        ⇅
       </button>
     </div>
   </div>

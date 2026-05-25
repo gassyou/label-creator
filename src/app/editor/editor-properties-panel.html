@@ -44,25 +44,26 @@
         </select>
       </label>
 
-      <label>
-        <span>Width (mm)</span>
-        <input
-          type="number"
-          min="20"
-          [ngModel]="activePage().widthMm"
-          (ngModelChange)="pageWidthChanged.emit($event)"
-        />
-      </label>
-
-      <label>
-        <span>Height (mm)</span>
-        <input
-          type="number"
-          min="20"
-          [ngModel]="activePage().heightMm"
-          (ngModelChange)="pageHeightChanged.emit($event)"
-        />
-      </label>
+      <div class="inline-row">
+        <label>
+          <span>W (mm)</span>
+          <input
+            type="number"
+            min="20"
+            [ngModel]="activePage().widthMm"
+            (ngModelChange)="pageWidthChanged.emit($event)"
+          />
+        </label>
+        <label>
+          <span>H (mm)</span>
+          <input
+            type="number"
+            min="20"
+            [ngModel]="activePage().heightMm"
+            (ngModelChange)="pageHeightChanged.emit($event)"
+          />
+        </label>
+      </div>
     }
   </section>
 
@@ -120,18 +121,91 @@
           />
         </label>
 
-        @if (textEditorVisible() || figureEditorVisible()) {
+        <!-- Fill - shown for shapes, text, barcode, qrcode -->
+        @if (selectionState().type !== 'line') {
           <label>
             <span>Fill</span>
+            <div class="color-input-row">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="!selectionState().fill"
+                  (change)="fillChanged.emit($any($event.target).checked ? '' : '#000000')"
+                />
+                <span>None</span>
+              </label>
+              <input
+                type="color"
+                [ngModel]="selectionState().fill"
+                (ngModelChange)="fillChanged.emit($event)"
+                [disabled]="!selectionState().fill"
+              />
+            </div>
+          </label>
+        }
+
+        <!-- Stroke - for shapes and line -->
+        @if (selectionState().type === 'shape' || selectionState().type === 'line') {
+          <label>
+            <span>Stroke</span>
+            <div class="color-input-row">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="!selectionState().stroke"
+                  (change)="strokeChanged.emit($any($event.target).checked ? '' : '#000000')"
+                />
+                <span>None</span>
+              </label>
+              <input
+                type="color"
+                [ngModel]="selectionState().stroke"
+                (ngModelChange)="strokeChanged.emit($event)"
+                [disabled]="!selectionState().stroke"
+              />
+            </div>
+          </label>
+          <label>
+            <span>Stroke Width</span>
             <input
-              type="color"
-              [ngModel]="selectionState().fill"
-              (ngModelChange)="fillChanged.emit($event)"
+              type="number"
+              min="0"
+              max="20"
+              [ngModel]="selectionState().strokeWidth"
+              (ngModelChange)="strokeWidthChanged.emit($event)"
             />
           </label>
         }
 
+        <!-- Text Properties -->
         @if (textEditorVisible()) {
+          <label>
+            <span>Text</span>
+            <input
+              type="text"
+              [ngModel]="selectionState().text"
+              (ngModelChange)="textChanged.emit($event)"
+            />
+          </label>
+          <label>
+            <span>Color</span>
+            <div class="color-input-row">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="!selectionState().color"
+                  (change)="colorChanged.emit($any($event.target).checked ? '' : '#000000')"
+                />
+                <span>None</span>
+              </label>
+              <input
+                type="color"
+                [ngModel]="selectionState().color"
+                (ngModelChange)="colorChanged.emit($event)"
+                [disabled]="!selectionState().color"
+              />
+            </div>
+          </label>
           <label>
             <span>Font Family</span>
             <select
@@ -228,14 +302,118 @@
             />
           </label>
         }
+
+        <!-- Barcode Properties -->
+        @if (selectionState().type === 'barcode') {
+          <label>
+            <span>Barcode Format</span>
+            <select
+              [ngModel]="selectionState().barcodeFormat"
+              (ngModelChange)="barcodeFormatChanged.emit($event)"
+            >
+              <option value="CODE128">CODE128</option>
+              <option value="EAN13">EAN-13</option>
+              <option value="CODE39">CODE39</option>
+            </select>
+          </label>
+          <label>
+            <span>Value</span>
+            <input
+              type="text"
+              [ngModel]="selectionState().text"
+              (ngModelChange)="textChanged.emit($event)"
+            />
+          </label>
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              [ngModel]="selectionState().showText"
+              (ngModelChange)="barcodeShowTextChanged.emit($event)"
+            />
+            <span>Show Text</span>
+          </label>
+        }
+
+        <!-- QR Code Properties -->
+        @if (selectionState().type === 'qrcode') {
+          <label>
+            <span>Value</span>
+            <input
+              type="text"
+              [ngModel]="selectionState().text"
+              (ngModelChange)="textChanged.emit($event)"
+            />
+          </label>
+          <label>
+            <span>Foreground</span>
+            <div class="color-input-row">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="!selectionState().foregroundColor"
+                  (change)="foregroundColorChanged.emit($any($event.target).checked ? '' : '#000000')"
+                />
+                <span>None</span>
+              </label>
+              <input
+                type="color"
+                [ngModel]="selectionState().foregroundColor"
+                (ngModelChange)="foregroundColorChanged.emit($event)"
+                [disabled]="!selectionState().foregroundColor"
+              />
+            </div>
+          </label>
+          <label>
+            <span>Background</span>
+            <div class="color-input-row">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="!selectionState().backgroundColor"
+                  (change)="backgroundColorChanged.emit($any($event.target).checked ? '' : '#ffffff')"
+                />
+                <span>None</span>
+              </label>
+              <input
+                type="color"
+                [ngModel]="selectionState().backgroundColor"
+                (ngModelChange)="backgroundColorChanged.emit($event)"
+                [disabled]="!selectionState().backgroundColor"
+              />
+            </div>
+          </label>
+          <label>
+            <span>Error Correction</span>
+            <select
+              [ngModel]="selectionState().errorCorrectionLevel"
+              (ngModelChange)="errorCorrectionLevelChanged.emit($event)"
+            >
+              <option value="L">Low (L)</option>
+              <option value="M">Medium (M)</option>
+              <option value="Q">Quartile (Q)</option>
+              <option value="H">High (H)</option>
+            </select>
+          </label>
+        }
+
+        <!-- Data Binding - for text, barcode, qrcode -->
+        @if (selectionState().type === 'text' || selectionState().type === 'barcode' || selectionState().type === 'qrcode') {
+          <label>
+            <span>Data Binding</span>
+            <input
+              type="text"
+              [ngModel]="selectionState().binding"
+              (ngModelChange)="bindingChanged.emit($event)"
+              placeholder="binding placeholder"
+            />
+          </label>
+        }
       </div>
     }
   </section>
 
-  @if (jsonPreview()) {
-    <section class="rail-panel json-panel">
-      <h2>Canvas JSON</h2>
-      <pre>{{ jsonPreview() }}</pre>
-    </section>
-  }
+  <section class="rail-panel json-panel">
+    <h2>Canvas JSON</h2>
+    <pre>{{ jsonPreview() }}</pre>
+  </section>
 </aside>

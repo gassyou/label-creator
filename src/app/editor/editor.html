@@ -1,10 +1,10 @@
 <section class="editor-shell">
   <app-editor-topbar
     [hasSelection]="propsPanelVisible()"
+    [hasMultiSelection]="hasMultiSelection()"
     [zoom]="canvasService.zoom()"
     (saveRequested)="saveCanvasToJSON()"
     (loadRequested)="loadCanvasFromJSON()"
-    (jsonRequested)="rasterizeJSON()"
     (svgRequested)="rasterizeSVG()"
     (pngRequested)="rasterize()"
     (pdfRequested)="exportPdf()"
@@ -15,6 +15,14 @@
     (sendBackRequested)="sendSelectionToBack()"
     (unselectRequested)="clearSelection()"
     (deleteRequested)="removeSelected()"
+    (alignLeftRequested)="alignObjects('left')"
+    (alignCenterHRequested)="alignObjects('center')"
+    (alignRightRequested)="alignObjects('right')"
+    (alignTopRequested)="alignObjects('top')"
+    (alignCenterVRequested)="alignObjects('middle')"
+    (alignBottomRequested)="alignObjects('bottom')"
+    (distributeHRequested)="distributeObjects('horizontal')"
+    (distributeVRequested)="distributeObjects('vertical')"
   />
 
   <div class="workspace">
@@ -57,6 +65,8 @@
       (idChanged)="updateSelectionId($event)"
       (opacityChanged)="updateSelectionOpacity($event)"
       (fillChanged)="updateSelectionFill($event)"
+      (strokeChanged)="updateSelectionStroke($event)"
+      (strokeWidthChanged)="updateSelectionStrokeWidth($event)"
       (fontFamilyChanged)="updateSelectionFontFamily($event)"
       (textAlignChanged)="updateSelectionTextAlign($event)"
       (boldToggled)="toggleBold()"
@@ -65,6 +75,14 @@
       (fontSizeChanged)="updateSelectionFontSize($event)"
       (lineHeightChanged)="updateSelectionLineHeight($event)"
       (charSpacingChanged)="updateSelectionCharSpacing($event)"
+      (textChanged)="updateSelectionText($event)"
+      (colorChanged)="updateSelectionColor($event)"
+      (bindingChanged)="updateBinding($event)"
+      (barcodeFormatChanged)="updateBarcodeFormat($event)"
+      (barcodeShowTextChanged)="updateBarcodeShowText($event)"
+      (errorCorrectionLevelChanged)="updateErrorCorrectionLevel($event)"
+      (foregroundColorChanged)="updateForegroundColor($event)"
+      (backgroundColorChanged)="updateBackgroundColor($event)"
     />
   </div>
 </section>

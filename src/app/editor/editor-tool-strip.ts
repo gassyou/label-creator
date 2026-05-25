@@ -30,6 +30,9 @@ export class EditorToolStripComponent {
     { id: 'text', icon: 'T', label: 'Insert text' },
     { id: 'square', icon: '□', label: 'Insert square' },
     { id: 'circle', icon: '◯', label: 'Insert circle' },
-    { id: 'triangle', icon: '△', label: 'Insert triangle' }
+    { id: 'triangle', icon: '△', label: 'Insert triangle' },
+    { id: 'line', icon: '/', label: 'Insert line' },
+    { id: 'qrcode', icon: '▦', label: 'Insert QR code' },
+    { id: 'barcode', icon: '|||', label: 'Insert barcode' }
   ];
 }

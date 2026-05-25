@@ -23,7 +23,9 @@ import {
   EditorSelectionState,
   EditorTool,
   getPresetById,
-  PAGE_SIZE_PRESETS
+  LabelElement,
+  PAGE_SIZE_PRESETS,
+  BarcodeElement
 } from './editor.models';
 import { EditorPdfService } from './editor-pdf.service';
 import { EditorPropertiesPanelComponent } from './editor-properties-panel';
@@ -107,7 +109,14 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
       case 'square':
       case 'circle':
       case 'triangle':
+      case 'line':
         this.canvasService.addShape(tool);
+        return;
+      case 'qrcode':
+        this.canvasService.addQRCode();
+        return;
+      case 'barcode':
+        this.canvasService.addBarcode('CODE128');
         return;
     }
   }
@@ -148,6 +157,78 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
   updateSelectionFill(fill: string): void {
     this.selectionState.update((state) => ({ ...state, fill }));
     this.canvasService.setSelectionFill(fill);
+  }
+
+  updateSelectionStroke(stroke: string): void {
+    this.selectionState.update((state) => ({ ...state, stroke }));
+    this.canvasService.setSelectionStroke(stroke);
+  }
+
+  updateSelectionStrokeWidth(strokeWidth: number): void {
+    this.selectionState.update((state) => ({ ...state, strokeWidth: Number(strokeWidth) }));
+    this.canvasService.setSelectionStrokeWidth(strokeWidth);
+  }
+
+  updateSelectionColor(color: string): void {
+    this.selectionState.update((state) => ({ ...state, color }));
+    this.canvasService.setSelectionColor(color);
+  }
+
+  updateSelectionText(text: string): void {
+    this.selectionState.update((state) => ({ ...state, text }));
+  }
+
+  updateBinding(binding: string): void {
+    this.selectionState.update((state) => ({ ...state, binding }));
+  }
+
+  updateBarcodeFormat(format: string): void {
+    this.selectionState.update((state) => ({ ...state, barcodeFormat: format as any }));
+    this.canvasService.updateBarcodeProperties(format, this.selectionState().showText ?? true);
+  }
+
+  updateBarcodeShowText(showText: boolean): void {
+    this.selectionState.update((state) => ({ ...state, showText }));
+    this.canvasService.updateBarcodeProperties(this.selectionState().barcodeFormat ?? 'CODE128', showText);
+  }
+
+  updateErrorCorrectionLevel(level: string): void {
+    this.selectionState.update((state) => ({ ...state, errorCorrectionLevel: level as any }));
+    this.canvasService.updateQRCodeProperties(
+      this.selectionState().foregroundColor ?? '#000000',
+      this.selectionState().backgroundColor ?? '#ffffff',
+      level
+    );
+  }
+
+  updateForegroundColor(color: string): void {
+    this.selectionState.update((state) => ({ ...state, foregroundColor: color }));
+    this.canvasService.updateQRCodeProperties(
+      color,
+      this.selectionState().backgroundColor ?? '#ffffff',
+      this.selectionState().errorCorrectionLevel ?? 'M'
+    );
+  }
+
+  updateBackgroundColor(color: string): void {
+    this.selectionState.update((state) => ({ ...state, backgroundColor: color }));
+    this.canvasService.updateQRCodeProperties(
+      this.selectionState().foregroundColor ?? '#000000',
+      color,
+      this.selectionState().errorCorrectionLevel ?? 'M'
+    );
+  }
+
+  alignObjects(direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'): void {
+    this.canvasService.alignSelectedObjects(direction);
+  }
+
+  distributeObjects(direction: 'horizontal' | 'vertical'): void {
+    this.canvasService.distributeSelectedObjects(direction);
+  }
+
+  hasMultiSelection(): boolean {
+    return this.canvasService.hasMultiSelection();
   }
 
   updateSelectionFontFamily(fontFamily: string): void {
@@ -238,10 +319,6 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     this.canvasState.set(activePage.canvasState);
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
     await this.canvasService.loadPage(activePage);
-  }
-
-  rasterizeJSON(): void {
-    this.canvasService.previewJson();
   }
 
   rasterize(): void {

@@ -41,6 +41,8 @@ export class EditorPropertiesPanelComponent {
   readonly idChanged = output<string>();
   readonly opacityChanged = output<number>();
   readonly fillChanged = output<string>();
+  readonly strokeChanged = output<string>();
+  readonly strokeWidthChanged = output<number>();
   readonly fontFamilyChanged = output<string>();
   readonly textAlignChanged = output<string>();
   readonly boldToggled = output<void>();
@@ -49,4 +51,12 @@ export class EditorPropertiesPanelComponent {
   readonly fontSizeChanged = output<number>();
   readonly lineHeightChanged = output<number>();
   readonly charSpacingChanged = output<number>();
+  readonly textChanged = output<string>();
+  readonly colorChanged = output<string>();
+  readonly bindingChanged = output<string>();
+  readonly barcodeFormatChanged = output<string>();
+  readonly barcodeShowTextChanged = output<boolean>();
+  readonly errorCorrectionLevelChanged = output<string>();
+  readonly foregroundColorChanged = output<string>();
+  readonly backgroundColorChanged = output<string>();
 }

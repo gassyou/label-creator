@@ -4,22 +4,32 @@ import {
   Circle,
   FabricImage,
   IText,
+  Line,
   Pattern,
   Rect,
   Triangle
 } from 'fabric';
 import {
-  CanvasEntity,
+  BarcodeElement,
+  CircleElement,
   DEFAULT_CANVAS_STATE,
   DEFAULT_SELECTION_STATE,
   EditorCanvasState,
   EditorPage,
-  EditorSelectionState
+  EditorSelectionState,
+  ElementType,
+  LabelElement,
+  LineElement,
+  millimetersToPixels,
+  QRCodeElement,
+  TextElement,
+  TriangleElement,
+  RectElement
 } from './editor.models';
 
 @Injectable()
 export class EditorCanvasService {
-  readonly selected = signal<CanvasEntity | null>(null);
+  readonly selected = signal<LabelElement | null>(null);
   readonly textEditorVisible = signal(false);
   readonly figureEditorVisible = signal(false);
   readonly jsonPreview = signal('');
@@ -30,6 +40,9 @@ export class EditorCanvasService {
   private drawingModeEnabled = false;
   private hydrating = false;
   private canvasElement: HTMLCanvasElement | null = null;
+
+  // Element registry for tracking all elements on canvas
+  private elementRegistry: Map<string, LabelElement> = new Map();
 
   initialize(element: HTMLCanvasElement, canvasState: EditorCanvasState): void {
     this.canvas?.dispose();
@@ -56,11 +69,13 @@ export class EditorCanvasService {
     this.canvas.on('text:changed', () => this.touchRevision());
     this.applyInteractionMode();
     this.canvas.requestRenderAll();
+    this.jsonPreview.set(JSON.stringify(this.canvas.toJSON(), null, 2));
   }
 
   destroy(): void {
     this.canvas?.dispose();
     this.canvas = null;
+    this.elementRegistry.clear();
     this.handleSelection(null);
   }
 
@@ -86,9 +101,13 @@ export class EditorCanvasService {
     this.canvas.requestRenderAll();
   }
 
-  addText(content: string): void {
+  // ============================================================
+  // Element Creation Methods
+  // ============================================================
+
+  addText(content: string): LabelElement {
     if (!this.canvas) {
-      return;
+      throw new Error('Canvas not initialized');
     }
 
     const text = new IText(content.trim() || 'Text', {
@@ -105,29 +124,132 @@ export class EditorCanvasService {
     this.extend(text, this.randomId());
     this.canvas.add(text);
     this.selectItemAfterAdded(text);
+
+    // Create and track the element model
+    const element = this.createElementModel(text, 'text') as TextElement;
+    this.elementRegistry.set(element.id, element);
+    return element;
   }
 
-  addShape(shapeType: 'square' | 'triangle' | 'circle'): void {
+  addShape(shapeType: 'square' | 'triangle' | 'circle' | 'line'): LabelElement {
     if (!this.canvas) {
-      return;
+      throw new Error('Canvas not initialized');
     }
 
-    let shape: CanvasEntity;
+    let shape: LabelElement;
+
     switch (shapeType) {
       case 'square':
-        shape = new Rect({ width: 100, height: 100, left: 24, top: 24, fill: '#059669' });
+        shape = {
+          type: 'rect',
+          id: this.randomId(),
+          x: 24,
+          y: 24,
+          width: 100,
+          height: 100,
+          fill: '#059669',
+          stroke: '#374151',
+          strokeWidth: 2
+        } as RectElement;
         break;
       case 'triangle':
-        shape = new Triangle({ width: 100, height: 100, left: 24, top: 24, fill: '#0ea5e9' });
+        shape = {
+          type: 'triangle',
+          id: this.randomId(),
+          x: 24,
+          y: 24,
+          width: 100,
+          height: 100,
+          fill: '#0ea5e9',
+          stroke: '#374151',
+          strokeWidth: 2
+        } as TriangleElement;
         break;
       case 'circle':
-        shape = new Circle({ radius: 50, left: 24, top: 24, fill: '#f97316' });
+        shape = {
+          type: 'circle',
+          id: this.randomId(),
+          x: 24,
+          y: 24,
+          width: 100,
+          height: 100,
+          fill: '#f97316',
+          stroke: '#374151',
+          strokeWidth: 2
+        } as CircleElement;
+        break;
+      case 'line':
+        shape = {
+          type: 'line',
+          id: this.randomId(),
+          x: 24,
+          y: 24,
+          x1: 24,
+          y1: 24,
+          x2: 124,
+          y2: 24,
+          stroke: '#000000',
+          strokeWidth: 2
+        } as LineElement;
         break;
     }
 
-    this.extend(shape, this.randomId());
-    this.canvas.add(shape);
-    this.selectItemAfterAdded(shape);
+    // Register element before adding to canvas
+    this.elementRegistry.set(shape.id, shape);
+
+    const fabricShape = this.createFabricShape(shape);
+    this.extend(fabricShape, shape.id);
+    this.canvas.add(fabricShape);
+    this.selectItemAfterAdded(fabricShape);
+
+    return shape;
+  }
+
+  addQRCode(value?: string): QRCodeElement {
+    const size = 100;
+    const qrElement: QRCodeElement = {
+      type: 'qrcode',
+      id: this.randomId(),
+      x: 24,
+      y: 24,
+      width: size,
+      height: size,
+      value,
+      errorCorrectionLevel: 'M',
+      foregroundColor: '#000000',
+      backgroundColor: '#ffffff'
+    };
+
+    // For now, create as rect placeholder - actual QR generation would need a library
+    const fabricShape = this.createFabricShape(qrElement);
+    this.extend(fabricShape, qrElement.id);
+    this.elementRegistry.set(qrElement.id, qrElement);
+    this.canvas?.add(fabricShape);
+    this.selectItemAfterAdded(fabricShape);
+
+    return qrElement;
+  }
+
+  addBarcode(format: BarcodeElement['format'], value?: string): BarcodeElement {
+    const barcodeElement: BarcodeElement = {
+      type: 'barcode',
+      id: this.randomId(),
+      x: 24,
+      y: 24,
+      width: 200,
+      height: 80,
+      format,
+      value,
+      showText: true
+    };
+
+    const fabricShape = this.createFabricShape(barcodeElement);
+    this.extend(fabricShape, barcodeElement.id);
+    this.elementRegistry.set(barcodeElement.id, barcodeElement);
+    this.canvas?.add(fabricShape);
+    this.selectItemAfterAdded(fabricShape);
+
+    return barcodeElement;
   }
 
   addImage(url: string): void {
@@ -152,6 +274,10 @@ export class EditorCanvasService {
     });
   }
 
+  // ============================================================
+  // Element CRUD Operations
+  // ============================================================
+
   clearSelection(): void {
     if (!this.canvas) {
       return;
@@ -172,7 +298,11 @@ export class EditorCanvasService {
     }
 
     this.canvas.discardActiveObject();
-    activeObjects.forEach((object) => this.canvas?.remove(object));
+    activeObjects.forEach((object) => {
+      const id = this.getObjectId(object);
+      this.elementRegistry.delete(id);
+      this.canvas?.remove(object);
+    });
     this.canvas.requestRenderAll();
     this.handleSelection(null);
   }
@@ -188,9 +318,9 @@ export class EditorCanvasService {
         left: (clone.left ?? 0) + 20,
         top: (clone.top ?? 0) + 20
       });
-      this.extend(clone as CanvasEntity, this.randomId());
+      this.extend(clone as any, this.randomId());
       this.canvas?.add(clone);
-      this.selectItemAfterAdded(clone as CanvasEntity);
+      this.selectItemAfterAdded(clone as any);
     });
   }
 
@@ -222,6 +352,7 @@ export class EditorCanvasService {
     this.canvas.clear();
     this.canvas.backgroundColor = backgroundColor;
     this.canvas.requestRenderAll();
+    this.elementRegistry.clear();
     this.handleSelection(null);
   }
 
@@ -253,12 +384,37 @@ export class EditorCanvasService {
     });
   }
 
+  // ============================================================
+  // Serialization
+  // ============================================================
+
   serializeCanvas(): string {
     if (!this.canvas) {
       return '';
     }
 
     return JSON.stringify(this.canvas.toJSON());
+  }
+
+  /**
+   * Serialize to TemplateDocument format (Section 7)
+   * This is the proper format for storing, not raw Fabric JSON
+   */
+  serializeToTemplate(): string {
+    const elements: LabelElement[] = [];
+    this.elementRegistry.forEach((element) => {
+      elements.push(element);
+    });
+
+    const template = {
+      id: `tpl-${Date.now()}`,
+      name: 'Template',
+      width: this.canvas?.width ?? 0,
+      height: this.canvas?.height ?? 0,
+      elements
+    };
+
+    return JSON.stringify(template, null, 2);
   }
 
   async loadPage(page: EditorPage): Promise<void> {
@@ -268,6 +424,7 @@ export class EditorCanvasService {
 
     this.hydrating = true;
     this.canvas.clear();
+    this.elementRegistry.clear();
     this.canvas.setDimensions({
       width: page.canvasState.width,
       height: page.canvasState.height
@@ -309,14 +466,6 @@ export class EditorCanvasService {
       this.applyInteractionMode();
       this.canvas?.requestRenderAll();
     });
-  }
-
-  previewJson(): void {
-    if (!this.canvas) {
-      return;
-    }
-
-    this.jsonPreview.set(JSON.stringify(this.canvas.toJSON(), null, 2));
   }
 
   exportPng(): void {
@@ -374,6 +523,10 @@ export class EditorCanvasService {
     link.click();
   }
 
+  // ============================================================
+  // Selection Operations
+  // ============================================================
+
   readSelectionState(): EditorSelectionState {
     const object = this.canvas?.getActiveObject();
     if (!object) {
@@ -386,10 +539,14 @@ export class EditorCanvasService {
       object.get('linethrough') ? 'line-through' : ''
     ].filter(Boolean);
 
-    return {
+    const objectType = this.getElementType(object);
+    const baseState = {
       id: this.getObjectId(object),
+      type: objectType,
       opacity: Math.round(Number(this.getActiveStyle<number>('opacity') || 1) * 100),
       fill: String(this.getActiveStyle('fill') || DEFAULT_SELECTION_STATE.fill),
+      stroke: String(object.get('stroke') || ''),
+      strokeWidth: Number(object.get('strokeWidth') || 0),
       fontSize: Number(this.getActiveStyle('fontSize') || DEFAULT_SELECTION_STATE.fontSize),
       lineHeight: Number(this.getActiveStyle('lineHeight') || DEFAULT_SELECTION_STATE.lineHeight),
       charSpacing: Number(this.getActiveStyle('charSpacing') || DEFAULT_SELECTION_STATE.charSpacing),
@@ -399,6 +556,52 @@ export class EditorCanvasService {
       fontFamily: this.getActiveProp('fontFamily') || DEFAULT_SELECTION_STATE.fontFamily,
       textDecoration: decorations.join(' '),
     };
+
+    // Add type-specific properties
+    switch (objectType) {
+      case 'text':
+        return {
+          ...baseState,
+          text: (object as IText).text ?? '',
+          color: String(object.get('fill') || '#000000'),
+        };
+      case 'barcode':
+        const barcodeEl = this.getObjectElement(object) as BarcodeElement | undefined;
+        return {
+          ...baseState,
+          barcodeFormat: barcodeEl?.format ?? 'CODE128',
+          showText: barcodeEl?.showText ?? true,
+        };
+      case 'qrcode':
+        const qrEl = this.getObjectElement(object) as QRCodeElement | undefined;
+        return {
+          ...baseState,
+          foregroundColor: qrEl?.foregroundColor ?? '#000000',
+          backgroundColor: qrEl?.backgroundColor ?? '#ffffff',
+        };
+      default:
+        return baseState;
+    }
+  }
+
+  private getElementType(object: any): EditorSelectionState['type'] {
+    const type = object.type;
+    if (type === 'i-text' || type === 'textbox') return 'text';
+    if (type === 'line') return 'line';
+    if (type === 'rect') {
+      const element = this.getObjectElement(object);
+      if (element?.type === 'barcode') return 'barcode';
+      if (element?.type === 'qrcode') return 'qrcode';
+      return 'shape';
+    }
+    if (type === 'circle' || type === 'triangle') return 'shape';
+    if (type === 'image') return 'image';
+    return 'shape';
+  }
+
+  private getObjectElement(object: any): LabelElement | undefined {
+    const id = this.getObjectId(object);
+    return this.elementRegistry.get(id);
   }
 
   updateSelectionId(id: string): void {
@@ -454,12 +657,262 @@ export class EditorCanvasService {
     this.setActiveProp('fontFamily', fontFamily);
   }
 
-  private handleSelection(object: CanvasEntity | null): void {
-    this.selected.set(object);
-    this.textEditorVisible.set(false);
-    this.figureEditorVisible.set(false);
+  setSelectionStroke(stroke: string): void {
+    const object = this.canvas?.getActiveObject();
+    if (!object) return;
+    object.set('stroke', stroke);
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
 
+  setSelectionStrokeWidth(strokeWidth: number): void {
+    const object = this.canvas?.getActiveObject();
+    if (!object) return;
+    object.set('strokeWidth', strokeWidth);
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  setSelectionColor(color: string): void {
+    this.setActiveStyle('fill', color);
+  }
+
+  updateBarcodeProperties(format: string, showText: boolean): void {
+    const object = this.canvas?.getActiveObject();
+    if (!object) return;
+    const element = this.getObjectElement(object) as BarcodeElement | undefined;
+    if (element) {
+      element.format = format as BarcodeElement['format'];
+      element.showText = showText;
+    }
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  updateQRCodeProperties(foregroundColor: string, backgroundColor: string, errorCorrectionLevel: string): void {
+    const object = this.canvas?.getActiveObject();
+    if (!object) return;
+    const element = this.getObjectElement(object) as QRCodeElement | undefined;
+    if (element) {
+      element.foregroundColor = foregroundColor;
+      element.backgroundColor = backgroundColor;
+      element.errorCorrectionLevel = errorCorrectionLevel as QRCodeElement['errorCorrectionLevel'];
+    }
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  // ============================================================
+  // Multi-Selection Alignment
+  // ============================================================
+
+  alignSelectedObjects(direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'): void {
+    const objects = this.canvas?.getActiveObjects();
+    if (!objects || objects.length === 0) return;
+
+    // Get canvas dimensions for page-based alignment
+    const canvasWidth = this.canvas?.width ?? 0;
+    const canvasHeight = this.canvas?.height ?? 0;
+
+    // Normalize all objects to have originX='left' and originY='top'
+    // This ensures left/top represents the actual bounding box edges
+    objects.forEach(obj => {
+      obj.set({
+        originX: 'left',
+        originY: 'top'
+      });
+      obj.setCoords();
+    });
+
+    // Calculate actual bounds for each object
+    const objectData = objects.map(obj => {
+      const left = obj.left ?? 0;
+      const top = obj.top ?? 0;
+      const width = (obj.width ?? 0) * (obj.scaleX ?? 1);
+      const height = (obj.height ?? 0) * (obj.scaleY ?? 1);
+      return { obj, left, top, width, height };
+    });
+
+    // Calculate bounding extremes from selected objects
+    const minLeft = Math.min(...objectData.map(d => d.left));
+    const maxRight = Math.max(...objectData.map(d => d.left + d.width));
+    const minTop = Math.min(...objectData.map(d => d.top));
+    const maxBottom = Math.max(...objectData.map(d => d.top + d.height));
+
+    // Calculate target bounds - use canvas/page for alignment reference
+    let targetLeft: number, targetRight: number, targetTop: number, targetBottom: number;
+    let targetCenterX: number, targetCenterY: number;
+
+    if (objects.length === 1) {
+      // Single selection: align to canvas/page
+      targetLeft = 0;
+      targetRight = canvasWidth;
+      targetTop = 0;
+      targetBottom = canvasHeight;
+      targetCenterX = canvasWidth / 2;
+      targetCenterY = canvasHeight / 2;
+    } else {
+      // Multi-selection: align to bounding box of selected objects
+      targetLeft = minLeft;
+      targetRight = maxRight;
+      targetTop = minTop;
+      targetBottom = maxBottom;
+      targetCenterX = (minLeft + maxRight) / 2;
+      targetCenterY = (minTop + maxBottom) / 2;
+    }
+
+    // Calculate new positions
+    const newPositions: Map<any, { left?: number; top?: number }> = new Map();
+    for (const data of objectData) {
+      const newPos: { left?: number; top?: number } = {};
+      switch (direction) {
+        case 'left':
+          newPos.left = targetLeft;
+          break;
+        case 'center':
+          newPos.left = targetCenterX - data.width / 2;
+          break;
+        case 'right':
+          newPos.left = targetRight - data.width;
+          break;
+        case 'top':
+          newPos.top = targetTop;
+          break;
+        case 'middle':
+          newPos.top = targetCenterY - data.height / 2;
+          break;
+        case 'bottom':
+          newPos.top = targetBottom - data.height;
+          break;
+      }
+      newPositions.set(data.obj, newPos);
+    }
+
+    // Apply all position changes at once
+    for (const data of objectData) {
+      const newPos = newPositions.get(data.obj);
+      if (newPos) {
+        data.obj.set(newPos);
+      }
+    }
+
+    // Update coordinates and render
+    objects.forEach(obj => obj.setCoords());
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  distributeSelectedObjects(direction: 'horizontal' | 'vertical'): void {
+    const objects = this.canvas?.getActiveObjects();
+    if (!objects || objects.length < 3) return;
+
+    // Normalize all objects to originX='left' and originY='top' first
+    objects.forEach(obj => {
+      const currentLeft = obj.left ?? 0;
+      const currentTop = obj.top ?? 0;
+      const scaleX = obj.scaleX ?? 1;
+      const scaleY = obj.scaleY ?? 1;
+      const width = (obj.width ?? 0) * scaleX;
+      const height = (obj.height ?? 0) * scaleY;
+
+      // Calculate visual left/top based on current origin
+      const visualLeft = obj.originX === 'center' ? currentLeft - width / 2 :
+                         obj.originX === 'right' ? currentLeft - width : currentLeft;
+      const visualTop = obj.originY === 'center' ? currentTop - height / 2 :
+                        obj.originY === 'bottom' ? currentTop - height : currentTop;
+
+      // Set origin to left/top
+      obj.set({
+        originX: 'left',
+        originY: 'top'
+      });
+
+      // Keep the same visual position using calculated visual values
+      obj.set({
+        left: visualLeft,
+        top: visualTop
+      });
+      obj.setCoords();
+    });
+
+    // Now get bounds after normalization
+    interface ObjData {
+      obj: any;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    }
+    const objectData: ObjData[] = objects.map(obj => ({
+      obj,
+      left: obj.left ?? 0,
+      top: obj.top ?? 0,
+      width: (obj.width ?? 0) * (obj.scaleX ?? 1),
+      height: (obj.height ?? 0) * (obj.scaleY ?? 1)
+    }));
+
+    // Sort objects along the axis
+    const sorted = [...objectData].sort((a, b) =>
+      direction === 'horizontal'
+        ? a.left - b.left
+        : a.top - b.top
+    );
+
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    const firstEdge = direction === 'horizontal' ? first.left : first.top;
+    const lastEdge = direction === 'horizontal'
+      ? last.left + last.width
+      : last.top + last.height;
+    const totalSpace = lastEdge - firstEdge;
+    const totalSize = sorted.reduce((sum, d) =>
+      direction === 'horizontal' ? sum + d.width : sum + d.height, 0);
+    const availableSpace = totalSpace - totalSize;
+    const gap = availableSpace / (sorted.length - 1);
+
+    let currentEdge = firstEdge + (direction === 'horizontal' ? first.width : first.height) + gap;
+    for (let i = 1; i < sorted.length - 1; i++) {
+      const data = sorted[i];
+      if (direction === 'horizontal') {
+        data.obj.set({ left: currentEdge });
+      } else {
+        data.obj.set({ top: currentEdge });
+      }
+      currentEdge += (direction === 'horizontal' ? data.width : data.height) + gap;
+      data.obj.setCoords();
+    }
+
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  hasMultiSelection(): boolean {
+    const objects = this.canvas?.getActiveObjects();
+    return objects ? objects.length > 1 : false;
+  }
+
+  // ============================================================
+  // Element Registry
+  // ============================================================
+
+  getElementById(id: string): LabelElement | undefined {
+    return this.elementRegistry.get(id);
+  }
+
+  getAllElements(): LabelElement[] {
+    return Array.from(this.elementRegistry.values());
+  }
+
+  // ============================================================
+  // Private Methods
+  // ============================================================
+
+  private handleSelection(object: any): void {
     if (!object) {
+      this.selected.set(null);
+      this.textEditorVisible.set(false);
+      this.figureEditorVisible.set(false);
       return;
     }
 
@@ -469,16 +922,18 @@ export class EditorCanvasService {
       cornerColor: 'rgba(37, 99, 235, 0.7)'
     });
 
-    switch (object.type) {
-      case 'rect':
-      case 'circle':
-      case 'triangle':
-        this.figureEditorVisible.set(true);
-        break;
-      case 'i-text':
-      case 'textbox':
-        this.textEditorVisible.set(true);
-        break;
+    const id = this.getObjectId(object);
+    const element = this.elementRegistry.get(id) ?? null;
+    this.selected.set(element);
+
+    this.textEditorVisible.set(false);
+    this.figureEditorVisible.set(false);
+
+    const type = object.type;
+    if (type === 'rect' || type === 'circle' || type === 'triangle' || type === 'line') {
+      this.figureEditorVisible.set(true);
+    } else if (type === 'i-text' || type === 'textbox') {
+      this.textEditorVisible.set(true);
     }
   }
 
@@ -506,7 +961,7 @@ export class EditorCanvasService {
     }
   }
 
-  private selectItemAfterAdded(obj: CanvasEntity): void {
+  private selectItemAfterAdded(obj: any): void {
     if (!this.canvas) {
       return;
     }
@@ -517,7 +972,7 @@ export class EditorCanvasService {
     this.handleSelection(obj);
   }
 
-  private extend(obj: CanvasEntity, id: number): void {
+  private extend(obj: any, id: string | number): void {
     const originalToObject = obj.toObject;
     obj.toObject = ((toObject) => () => ({
       ...toObject.call(obj),
@@ -525,16 +980,18 @@ export class EditorCanvasService {
     }))(originalToObject);
   }
 
-  private randomId(): number {
-    return Math.floor(Math.random() * 999999) + 1;
+  private randomId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private getObjectId(object: CanvasEntity): string {
-    const serializableObject = object as CanvasEntity & {
-      toObject(propertiesToInclude?: string[]): { id?: string | number };
-    };
-    const id = serializableObject.toObject(['id']).id;
-    return id ? String(id) : '';
+  private getObjectId(object: any): string {
+    try {
+      const serializableObject = object as any;
+      const id = serializableObject.toObject(['id']).id;
+      return id ? String(id) : '';
+    } catch {
+      return '';
+    }
   }
 
   private getActiveStyle<T = string | number>(styleName: string): T | '' {
@@ -626,7 +1083,157 @@ export class EditorCanvasService {
     }
 
     this.revision.update((value) => value + 1);
+    this.jsonPreview.set(JSON.stringify(this.canvas?.toJSON() ?? {}, null, 2));
   }
+
+  // ============================================================
+  // Element Model Creation
+  // ============================================================
+
+  private createElementModel(object: any, type: ElementType): LabelElement {
+    const base = {
+      id: this.getObjectId(object),
+      type,
+      x: object.left ?? 0,
+      y: object.top ?? 0,
+      width: (object.width ?? 100) * (object.scaleX ?? 1),
+      height: (object.height ?? 100) * (object.scaleY ?? 1),
+      rotation: object.angle ?? 0,
+      opacity: object.opacity ?? 1,
+      visible: object.visible ?? true,
+      lock: !object.selectable
+    };
+
+    switch (type) {
+      case 'text':
+        return {
+          ...base,
+          type: 'text',
+          text: (object as IText).text ?? '',
+          fontSize: object.fontSize ?? 16,
+          fontFamily: object.fontFamily ?? 'Helvetica',
+          fontWeight: object.fontWeight ?? '',
+          fontStyle: object.fontStyle ?? '',
+          align: object.textAlign ?? 'left',
+          color: object.fill ?? '#000000',
+          lineHeight: object.lineHeight ?? 1.16,
+          charSpacing: object.charSpacing ?? 0
+        } as TextElement;
+      case 'rect':
+        return {
+          ...base,
+          type: 'rect',
+          fill: object.fill ?? '#000000',
+          stroke: object.stroke ?? '',
+          strokeWidth: object.strokeWidth ?? 0,
+          radius: object.rx ?? 0
+        } as RectElement;
+      case 'circle':
+        return {
+          ...base,
+          type: 'circle',
+          fill: object.fill ?? '#000000',
+          stroke: object.stroke ?? '',
+          strokeWidth: object.strokeWidth ?? 0
+        } as CircleElement;
+      case 'triangle':
+        return {
+          ...base,
+          type: 'triangle',
+          fill: object.fill ?? '#000000',
+          stroke: object.stroke ?? '',
+          strokeWidth: object.strokeWidth ?? 0
+        } as TriangleElement;
+      case 'line':
+        return {
+          ...base,
+          type: 'line',
+          stroke: object.stroke ?? '#000000',
+          strokeWidth: object.strokeWidth ?? 1
+        } as LineElement;
+      default:
+        return base as LabelElement;
+    }
+  }
+
+  private createFabricShape(element: LabelElement): any {
+    switch (element.type) {
+      case 'rect':
+        return new Rect({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          fill: (element as RectElement).fill ?? '#000000',
+          stroke: (element as RectElement).stroke || undefined,
+          strokeWidth: (element as RectElement).strokeWidth || 0,
+          rx: (element as RectElement).radius
+        });
+      case 'circle':
+        return new Circle({
+          left: element.x,
+          top: element.y,
+          radius: element.width / 2,
+          fill: (element as CircleElement).fill ?? '#000000',
+          stroke: (element as CircleElement).stroke || undefined,
+          strokeWidth: (element as CircleElement).strokeWidth || 0
+        });
+      case 'triangle':
+        return new Triangle({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          fill: (element as TriangleElement).fill ?? '#000000',
+          stroke: (element as TriangleElement).stroke || undefined,
+          strokeWidth: (element as TriangleElement).strokeWidth || 0
+        });
+      case 'qrcode':
+        return new Rect({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          fill: (element as QRCodeElement).backgroundColor ?? '#ffffff',
+          stroke: (element as QRCodeElement).foregroundColor ?? '#000000',
+          strokeWidth: 2
+        });
+      case 'barcode':
+        return new Rect({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          fill: '#ffffff',
+          stroke: '#000000',
+          strokeWidth: 1
+        });
+      case 'line': {
+        const lineEl = element as LineElement;
+        const line = new Line([0, 0, lineEl.x2 - lineEl.x1, lineEl.y2 - lineEl.y1], {
+          left: lineEl.x1,
+          top: lineEl.y1,
+          stroke: lineEl.stroke || '#000000',
+          strokeWidth: lineEl.strokeWidth || 1,
+          originX: 'left',
+          originY: 'top'
+        });
+        return line;
+      }
+      default:
+        return new Rect({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          fill: '#cccccc'
+        });
+    }
+  }
+
+  // ============================================================
+  // Zoom
+  // ============================================================
 
   zoomIn(): void {
     const newZoom = Math.min(this.zoom() + 0.1, 3);

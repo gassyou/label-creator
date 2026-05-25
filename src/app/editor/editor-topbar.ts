@@ -10,11 +10,11 @@ import { Toolbar, ToolbarWidget, ToolbarWidgetGroup } from '@angular/aria/toolba
 })
 export class EditorTopbarComponent {
   readonly hasSelection = input(false);
+  readonly hasMultiSelection = input(false);
   readonly zoom = input(1);
 
   readonly saveRequested = output<void>();
   readonly loadRequested = output<void>();
-  readonly jsonRequested = output<void>();
   readonly svgRequested = output<void>();
   readonly pngRequested = output<void>();
   readonly pdfRequested = output<void>();
@@ -25,4 +25,12 @@ export class EditorTopbarComponent {
   readonly sendBackRequested = output<void>();
   readonly unselectRequested = output<void>();
   readonly deleteRequested = output<void>();
+  readonly alignLeftRequested = output<void>();
+  readonly alignCenterHRequested = output<void>();
+  readonly alignRightRequested = output<void>();
+  readonly alignTopRequested = output<void>();
+  readonly alignCenterVRequested = output<void>();
+  readonly alignBottomRequested = output<void>();
+  readonly distributeHRequested = output<void>();
+  readonly distributeVRequested = output<void>();
 }
