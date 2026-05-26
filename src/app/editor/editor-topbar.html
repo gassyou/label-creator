@@ -44,6 +44,10 @@
       <button type="button" ngToolbarWidget value="export-pdf" class="toolbar-button ghost" title="Export PDF" (click)="pdfRequested.emit()">
         <span nz-icon nzType="file-pdf" nzTheme="outline"></span>
       </button>
+      <button type="button" ngToolbarWidget value="print-setting" class="toolbar-button ghost" title="Print Settings" (click)="printSettingRequested.emit()">
+        <span nz-icon nzType="setting"></span>
+        打印设置
+      </button>
     </div>
 
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Selection actions">

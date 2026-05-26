@@ -21,6 +21,7 @@ export class EditorTopbarComponent {
   readonly svgRequested = output<void>();
   readonly pngRequested = output<void>();
   readonly pdfRequested = output<void>();
+  readonly printSettingRequested = output<void>();
   readonly zoomInRequested = output<void>();
   readonly zoomOutRequested = output<void>();
   readonly bringFrontRequested = output<void>();
