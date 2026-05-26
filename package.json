@@ -31,8 +31,10 @@
     "@angular/platform-browser": "^21.1.0",
     "@angular/router": "^21.1.0",
     "fabric": "^7.4.0",
+    "jsbarcode": "^3.12.3",
     "jspdf": "^4.2.1",
     "ng-zorro-antd": "^21.3.0",
+    "qrcode": "^1.5.4",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

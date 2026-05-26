@@ -18,23 +18,12 @@ import {
 })
 export class EditorPropertiesPanelComponent {
   readonly canvasState = input.required<EditorCanvasState>();
-  readonly pages = input.required<LabelPage[]>();
-  readonly activePage = input.required<LabelPage>();
-  readonly activePageId = input.required<string>();
-  readonly pageSizePresets = input.required<ReadonlyArray<PageSizePreset>>();
   readonly selectionState = input.required<EditorSelectionState>();
   readonly textEditorVisible = input(false);
   readonly figureEditorVisible = input(false);
   readonly propsPanelVisible = input(false);
   readonly jsonPreview = input('');
 
-  readonly pageSelected = output<string>();
-  readonly pageAdded = output<void>();
-  readonly pageDuplicated = output<void>();
-  readonly pageRemoved = output<string>();
-  readonly pagePresetChanged = output<string>();
-  readonly pageWidthChanged = output<number>();
-  readonly pageHeightChanged = output<number>();
   readonly canvasFillChanged = output<string>();
   readonly canvasImageChanged = output<string>();
   readonly applyCanvasImageRequested = output<void>();

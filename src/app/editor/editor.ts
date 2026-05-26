@@ -18,18 +18,19 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { EditorCanvasService } from './editor-canvas.service';
 import {
-  createCanvasState,
-  createEditorPage,
-  DEFAULT_SELECTION_STATE,
+  LabelTemplate,
+  PrintSetting,
+  DEFAULT_PRINT_SETTING,
+  PAGE_SIZE_PRESETS,
+  getPaperSize,
+  millimetersToPixels,
+  DEFAULT_CANVAS_STATE,
   EditorCanvasState,
-  EditorState,
   EditorSelectionState,
   EditorTool,
+  DEFAULT_SELECTION_STATE,
   getPresetById,
-  LabelDocument,
-  LabelPage,
-  PAGE_SIZE_PRESETS,
-  DEFAULT_CANVAS_STATE
+  createCanvasState
 } from './models/label.models';
 import { EditorPdfService } from './editor-pdf.service';
 import { EditorPropertiesPanelComponent } from './editor-properties-panel';
@@ -56,11 +57,11 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly message = inject(NzMessageService);
 
   readonly activeTool = signal<EditorTool>('select');
-  readonly documentState = signal<EditorState>(this.createInitialDocument());
-  readonly canvasState = signal<EditorCanvasState>(this.getInitialCanvasState());
+  readonly canvasState = signal<EditorCanvasState>(DEFAULT_CANVAS_STATE);
   readonly selectionState = signal<EditorSelectionState>({ ...DEFAULT_SELECTION_STATE });
   readonly templateName = signal('未命名');
   readonly isDirty = signal(false);
+  readonly printSettingVisible = signal(false);
 
   /** Current editing template ID, null for new */
   private templateId: string | null = null;
@@ -71,12 +72,17 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly textEditorVisible = this.canvasService.textEditorVisible.asReadonly();
   readonly figureEditorVisible = this.canvasService.figureEditorVisible.asReadonly();
   readonly jsonPreview = this.canvasService.jsonPreview.asReadonly();
-  readonly pages = computed(() => this.documentState().pages);
-  readonly activePage = computed(
-    () =>
-      this.documentState().pages.find((page) => page.id === this.documentState().activePageId) ??
-      this.documentState().pages[0]
-  );
+
+  /** Single-page template signal */
+  readonly template = signal<LabelTemplate>({
+    id: '',
+    name: '未命名',
+    width: 210,
+    height: 297,
+    backgroundColor: '#ffffff',
+    canvasJson: '',
+    printSetting: { ...DEFAULT_PRINT_SETTING }
+  });
 
   textString = '';
   private hasCanvasInitialized = false;
@@ -96,7 +102,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       untracked(() => {
-        this.persistCurrentPageSnapshot();
         this.isDirty.set(true);
       });
     });
@@ -111,17 +116,13 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
-    const page = this.activePage();
-    const canvasState = page.canvasState ?? DEFAULT_CANVAS_STATE;
-    this.canvasService.initialize(this.htmlCanvas.nativeElement, canvasState);
+    this.canvasService.initialize(this.htmlCanvas.nativeElement, this.canvasState());
     this.hasCanvasInitialized = true;
 
     // Load template after canvas is initialized
     if (this.templateId) {
       this.loadTemplate(this.templateId);
     }
-
-    this.persistCurrentPageSnapshot();
   }
 
   ngOnDestroy(): void {
@@ -208,24 +209,16 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   updateCanvasFill(backgroundColor: string): void {
     this.canvasState.update((state) => ({ ...state, backgroundColor }));
-    this.updateActivePage((page) => ({
-      ...page,
-      canvasState: { ...page.canvasState!, backgroundColor }
-    }));
-    this.canvasService.applyCanvasFill(backgroundColor, this.canvasState().backgroundImage);
+    this.canvasService.applyCanvasFill(backgroundColor, this.canvasState().backgroundImage || '');
   }
 
   updateCanvasImage(backgroundImage: string): void {
     this.canvasState.update((state) => ({ ...state, backgroundImage }));
-    this.updateActivePage((page) => ({
-      ...page,
-      canvasState: { ...page.canvasState!, backgroundImage }
-    }));
   }
 
   applyCanvasImage(): void {
-    this.canvasService.applyCanvasImage(this.canvasState().backgroundImage, () => {
-      this.persistCurrentPageSnapshot();
+    this.canvasService.applyCanvasImage(this.canvasState().backgroundImage || '', () => {
+      this.isDirty.set(true);
     });
   }
 
@@ -339,8 +332,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   toggleTextDecoration(value: string): void {
-    const current = this.selectionState()
-      .textDecoration.split(' ')
+    const current = (this.selectionState().textDecoration || '')
+      .split(' ')
       .map((item) => item.trim())
       .filter(Boolean);
     const textDecoration = current.includes(value)
@@ -391,11 +384,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
    * 保存模板到存储
    */
   saveToTemplate(): void {
-    this.persistCurrentPageSnapshot();
-    const doc = this.buildLabelDocument();
+    const labelTemplate = this.buildLabelTemplate();
     const name = this.templateName() || `模板 ${new Date().toLocaleString()}`;
 
-    this.templateService.saveTemplate(name, doc, undefined, this.templateId ?? undefined).subscribe({
+    this.templateService.saveTemplate(name, labelTemplate, undefined, this.templateId ?? undefined).subscribe({
       next: (template) => {
         this.templateId = template.id;
         this.isDirty.set(false);
@@ -423,16 +415,27 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
           return;
         }
         this.templateName.set(template.name || '未命名');
-        const doc = template.document;
-        if (doc?.pages?.length) {
-          this.documentState.set({
-            activePageId: doc.pages[0].id,
-            pages: doc.pages
+        const labelTemplate = template.document as LabelTemplate;
+        this.template.set(labelTemplate);
+        const widthMm = labelTemplate.width || 210;
+        const heightMm = labelTemplate.height || 297;
+        this.canvasState.set({
+          width: millimetersToPixels(widthMm),
+          height: millimetersToPixels(heightMm),
+          backgroundColor: labelTemplate.backgroundColor || '#ffffff',
+          backgroundImage: labelTemplate.backgroundImage
+        });
+        if (labelTemplate.canvasJson) {
+          await this.canvasService.loadPage({
+            id: 'loaded-page',
+            name: 'Loaded Page',
+            widthMm,
+            heightMm,
+            backgroundColor: labelTemplate.backgroundColor || '#ffffff',
+            backgroundImage: labelTemplate.backgroundImage,
+            canvasState: this.canvasState(),
+            canvasJson: labelTemplate.canvasJson
           });
-          // Load first page to canvas
-          const firstPage = doc.pages[0];
-          this.canvasState.set(firstPage.canvasState ?? DEFAULT_CANVAS_STATE);
-          await this.canvasService.loadPage(firstPage);
         }
       },
       error: () => this.message.error('加载模板失败')
@@ -443,22 +446,21 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.templateName.set(name || '未命名');
   }
 
-  private buildLabelDocument(): LabelDocument {
-    const state = this.documentState();
+  private buildLabelTemplate(): LabelTemplate {
     return {
-      id: this.templateId || `doc-${Date.now()}`,
-      name: '',
-      version: '1.0.0',
-      layouts: [],
-      templates: [],
-      pages: state.pages,
-      resources: []
+      id: this.templateId || `tpl-${Date.now()}`,
+      name: this.templateName(),
+      width: Math.round(this.canvasState().width / (96 / 25.4)),
+      height: Math.round(this.canvasState().height / (96 / 25.4)),
+      backgroundColor: this.canvasState().backgroundColor,
+      backgroundImage: this.canvasState().backgroundImage,
+      canvasJson: this.canvasService.serializeCanvas(),
+      printSetting: this.template().printSetting
     };
   }
 
   saveCanvasToJSON(): void {
-    this.persistCurrentPageSnapshot();
-    localStorage.setItem('KanvasDocument', JSON.stringify(this.documentState()));
+    localStorage.setItem('KanvasDocument', JSON.stringify(this.buildLabelTemplate()));
   }
 
   async loadCanvasFromJSON(): Promise<void> {
@@ -467,12 +469,28 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    const documentState = JSON.parse(saved) as EditorState;
-    const activePage = documentState.pages.find((page) => page.id === documentState.activePageId) ?? documentState.pages[0];
-    this.documentState.set(documentState);
-    this.canvasState.set(activePage.canvasState ?? DEFAULT_CANVAS_STATE);
-    this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
-    await this.canvasService.loadPage(activePage);
+    const labelTemplate = JSON.parse(saved) as LabelTemplate;
+    this.template.set(labelTemplate);
+    const widthMm = labelTemplate.width || 210;
+    const heightMm = labelTemplate.height || 297;
+    this.canvasState.set({
+      width: millimetersToPixels(widthMm),
+      height: millimetersToPixels(heightMm),
+      backgroundColor: labelTemplate.backgroundColor || '#ffffff',
+      backgroundImage: labelTemplate.backgroundImage
+    });
+    if (labelTemplate.canvasJson) {
+      await this.canvasService.loadPage({
+        id: 'loaded-page',
+        name: 'Loaded Page',
+        widthMm,
+        heightMm,
+        backgroundColor: labelTemplate.backgroundColor || '#ffffff',
+        backgroundImage: labelTemplate.backgroundImage,
+        canvasState: this.canvasState(),
+        canvasJson: labelTemplate.canvasJson
+      });
+    }
   }
 
   rasterize(): void {
@@ -492,151 +510,22 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   async exportPdf(): Promise<void> {
-    this.persistCurrentPageSnapshot();
-    await this.pdfService.exportDocument(this.documentState().pages, 'label-document.pdf');
+    const labelTemplate = this.buildLabelTemplate();
+    const widthMm = labelTemplate.width;
+    const heightMm = labelTemplate.height;
+    await this.pdfService.exportDocument([{
+      id: 'export-page',
+      name: 'Export Page',
+      widthMm,
+      heightMm,
+      backgroundColor: labelTemplate.backgroundColor,
+      backgroundImage: labelTemplate.backgroundImage,
+      canvasState: this.canvasState(),
+      canvasJson: labelTemplate.canvasJson
+    }], 'label-document.pdf');
   }
 
-  async selectPage(pageId: string): Promise<void> {
-    if (pageId === this.activePage().id) {
-      return;
-    }
-
-    this.persistCurrentPageSnapshot();
-    const page = this.pages().find((item) => item.id === pageId);
-    if (!page) {
-      return;
-    }
-
-    this.documentState.update((state) => ({ ...state, activePageId: pageId }));
-    this.canvasState.set(page.canvasState ?? DEFAULT_CANVAS_STATE);
-    this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
-    await this.canvasService.loadPage(page);
-  }
-
-  async addPage(): Promise<void> {
-    this.persistCurrentPageSnapshot();
-    const page = createEditorPage(this.pages().length + 1, this.activePage().presetId);
-
-    this.documentState.update((state) => ({
-      activePageId: page.id,
-      pages: [...state.pages, page]
-    }));
-
-    this.canvasState.set(page.canvasState ?? DEFAULT_CANVAS_STATE);
-    this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
-    await this.canvasService.loadPage(page);
-  }
-
-  async duplicatePage(): Promise<void> {
-    this.persistCurrentPageSnapshot();
-    const source = this.activePage();
-    const page: LabelPage = {
-      ...source,
-      id: `page-${Date.now()}-${this.pages().length + 1}`,
-      name: `${source.name} Copy`,
-      canvasState: { ...source.canvasState }
-    } as LabelPage;
-
-    this.documentState.update((state) => ({
-      activePageId: page.id,
-      pages: [...state.pages, page]
-    }));
-
-    this.canvasState.set(page.canvasState ?? DEFAULT_CANVAS_STATE);
-    this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
-    await this.canvasService.loadPage(page);
-  }
-
-  async removePage(pageId: string): Promise<void> {
-    if (this.pages().length === 1) {
-      return;
-    }
-
-    this.persistCurrentPageSnapshot();
-    const remainingPages = this.pages().filter((page) => page.id !== pageId);
-    const nextPage = remainingPages[Math.max(0, this.pages().findIndex((page) => page.id === pageId) - 1)] ?? remainingPages[0];
-
-    this.documentState.set({
-      activePageId: nextPage.id,
-      pages: remainingPages
-    });
-
-    this.canvasState.set(nextPage.canvasState ?? DEFAULT_CANVAS_STATE);
-    this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
-    await this.canvasService.loadPage(nextPage);
-  }
-
-  async updatePagePreset(presetId: string): Promise<void> {
-    const preset = getPresetById(presetId);
-    await this.updatePageSize(preset.widthMm, preset.heightMm, preset.id);
-  }
-
-  async updatePageWidthMm(widthMm: number): Promise<void> {
-    await this.updatePageSize(Number(widthMm), this.activePage().heightMm, 'custom');
-  }
-
-  async updatePageHeightMm(heightMm: number): Promise<void> {
-    await this.updatePageSize(this.activePage().widthMm, Number(heightMm), 'custom');
-  }
-
-  private async updatePageSize(widthMm: number, heightMm: number, presetId: string): Promise<void> {
-    const nextCanvasState = {
-      ...this.canvasState(),
-      ...createCanvasState(widthMm, heightMm),
-      backgroundColor: this.canvasState().backgroundColor,
-      backgroundImage: this.canvasState().backgroundImage
-    };
-
-    this.canvasState.set(nextCanvasState);
-    this.updateActivePage((page) => ({
-      ...page,
-      presetId,
-      widthMm: widthMm || page.widthMm,
-      heightMm: heightMm || page.heightMm,
-      canvasState: nextCanvasState
-    }));
-
-    this.canvasService.resizeCanvas(nextCanvasState);
-    this.persistCurrentPageSnapshot();
-  }
-
-  private createInitialDocument(): EditorState {
-    const firstPage = createEditorPage(1);
-    return {
-      activePageId: firstPage.id,
-      pages: [firstPage]
-    };
-  }
-
-  private getInitialCanvasState(): EditorCanvasState {
-    const firstPage = createEditorPage(1);
-    return firstPage.canvasState ?? DEFAULT_CANVAS_STATE;
-  }
-
-  private persistCurrentPageSnapshot(): void {
-    const activePageId = this.activePage().id;
-    const canvasJson = this.canvasService.serializeCanvas();
-    const currentCanvasState = this.canvasState();
-
-    this.documentState.update((state) => ({
-      ...state,
-      pages: state.pages.map((page) =>
-        page.id === activePageId
-          ? {
-              ...page,
-              canvasState: { ...currentCanvasState },
-              canvasJson
-            }
-          : page
-      )
-    }));
-  }
-
-  private updateActivePage(updater: (page: LabelPage) => LabelPage): void {
-    const activePageId = this.activePage().id;
-    this.documentState.update((state) => ({
-      ...state,
-      pages: state.pages.map((page) => (page.id === activePageId ? updater(page) : page))
-    }));
+  openPrintSettingDialog(): void {
+    this.printSettingVisible.set(true);
   }
 }

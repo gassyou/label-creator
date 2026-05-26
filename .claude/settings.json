@@ -6,9 +6,9 @@
       "WebFetch(domain:minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com)",
       "Bash(npx ng *)",
       "Bash(curl -s http://localhost:4200)",
-      "Bash(awk '{print $2}')",
-      "Bash(curl -s \"http://localhost:4200/main.js\")",
-      "Bash(curl -s \"http://localhost:4200\")"
+      "Read(//Users/rococo/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/**)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

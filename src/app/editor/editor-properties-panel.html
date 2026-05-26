@@ -1,76 +1,8 @@
 <aside class="right-rail">
   <section class="rail-panel">
-    <h2>Document</h2>
-
-    <div class="page-actions">
-      <button type="button" class="secondary" (click)="pageAdded.emit()">Add Page</button>
-      <button type="button" class="secondary" (click)="pageDuplicated.emit()">Duplicate</button>
-    </div>
-
-    <div class="page-list" role="list" aria-label="Document pages">
-      @for (page of pages(); track page.id) {
-        <button
-          type="button"
-          class="page-card"
-          [class.active]="page.id === activePageId()"
-          (click)="pageSelected.emit(page.id)"
-        >
-          <span class="page-card__title">{{ page.name }}</span>
-          <span class="page-card__meta">{{ page.widthMm }} × {{ page.heightMm }} mm</span>
-          <span class="page-card__meta">{{ page.canvasState?.width ?? 0 }} × {{ page.canvasState?.height ?? 0 }} px</span>
-        </button>
-      }
-    </div>
-
-    @if (pages().length > 1) {
-      <button type="button" class="danger wide" (click)="pageRemoved.emit(activePageId())">
-        Remove Active Page
-      </button>
-    }
-  </section>
-
-  <section class="rail-panel">
-    <h2>Page Setup</h2>
-    @if (pages().length) {
-      <label>
-        <span>Paper Preset</span>
-        <select
-          [ngModel]="activePage().presetId"
-          (ngModelChange)="pagePresetChanged.emit($event)"
-        >
-          @for (preset of pageSizePresets(); track preset.id) {
-            <option [value]="preset.id">{{ preset.name }}</option>
-          }
-        </select>
-      </label>
-
-      <div class="inline-row">
-        <label>
-          <span>W (mm)</span>
-          <input
-            type="number"
-            min="20"
-            [ngModel]="activePage().widthMm"
-            (ngModelChange)="pageWidthChanged.emit($event)"
-          />
-        </label>
-        <label>
-          <span>H (mm)</span>
-          <input
-            type="number"
-            min="20"
-            [ngModel]="activePage().heightMm"
-            (ngModelChange)="pageHeightChanged.emit($event)"
-          />
-        </label>
-      </div>
-    }
-  </section>
-
-  <section class="rail-panel">
     <h2>Canvas</h2>
     <p class="muted">
-      Active page raster size: {{ canvasState().width }} × {{ canvasState().height }} px
+      Canvas raster size: {{ canvasState().width }} × {{ canvasState().height }} px
     </p>
     <label>
       <span>Background Color</span>
