@@ -1,0 +1,65 @@
+<nz-modal
+  nzTitle="打印设置"
+  [(nzVisible)]="visible"
+  (nzOnOk)="onOk()"
+  (nzOnCancel)="onCancel()"
+  nzOkText="确定"
+  nzCancelText="取消">
+
+  <ng-container *nzModalContent>
+    <div class="setting-row">
+      <label>纸张大小</label>
+      <nz-select [(ngModel)]="printSetting().paperSize">
+        @for (size of paperSizes; track size.value) {
+          <nz-option [nzValue]="size.value" [nzLabel]="size.label"></nz-option>
+        }
+      </nz-select>
+    </div>
+
+    <div class="setting-row">
+      <label>方向</label>
+      <nz-radio-group [(ngModel)]="printSetting().orientation">
+        <nz-radio-button value="portrait">纵向</nz-radio-button>
+        <nz-radio-button value="landscape">横向</nz-radio-button>
+      </nz-radio-group>
+    </div>
+
+    <div class="setting-section">
+      <h4>页边距 (mm)</h4>
+      <div class="inline-row">
+        <div class="setting-field">
+          <label>上</label>
+          <nz-input-number [(ngModel)]="printSetting().marginTop" [min]="0" [step]="1"></nz-input-number>
+        </div>
+        <div class="setting-field">
+          <label>下</label>
+          <nz-input-number [(ngModel)]="printSetting().marginBottom" [min]="0" [step]="1"></nz-input-number>
+        </div>
+      </div>
+      <div class="inline-row">
+        <div class="setting-field">
+          <label>左</label>
+          <nz-input-number [(ngModel)]="printSetting().marginLeft" [min]="0" [step]="1"></nz-input-number>
+        </div>
+        <div class="setting-field">
+          <label>右</label>
+          <nz-input-number [(ngModel)]="printSetting().marginRight" [min]="0" [step]="1"></nz-input-number>
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-section">
+      <h4>标签间距 (mm)</h4>
+      <div class="inline-row">
+        <div class="setting-field">
+          <label>横向</label>
+          <nz-input-number [(ngModel)]="printSetting().gapX" [min]="0" [step]="0.5"></nz-input-number>
+        </div>
+        <div class="setting-field">
+          <label>纵向</label>
+          <nz-input-number [(ngModel)]="printSetting().gapY" [min]="0" [step]="0.5"></nz-input-number>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+</nz-modal>
