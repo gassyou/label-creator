@@ -1,21 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, of, from } from 'rxjs';
-import { LabelDocument } from '../editor/models/label.models';
-
-/**
- * 存储的模板数据结构
- * 用于在 localStorage 中持久化存储
- */
-export interface StoredTemplate {
-  id: string;
-  name: string;
-  /** 200x200 base64 缩略图 */
-  thumbnail?: string;
-  /** 完整的标签文档 */
-  document: LabelDocument;
-  createdAt: string;
-  updatedAt: string;
-}
+import { LabelTemplate, StoredTemplate } from '../editor/models/template.models';
 
 /**
  * 模板存储服务接口

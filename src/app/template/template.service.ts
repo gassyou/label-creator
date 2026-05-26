@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, from, map, switchMap } from 'rxjs';
 import { Canvas } from 'fabric';
 import { StoredTemplate, TemplateStorageService } from './template.storage';
-import { LabelDocument, LabelPage, DEFAULT_CANVAS_STATE } from '../editor/models/label.models';
+import { LabelTemplate } from '../editor/models/template.models';
 
 /**
  * 模板服务
@@ -29,38 +29,43 @@ export class TemplateService {
   /**
    * 保存模板
    * @param name 模板名称
-   * @param document 标签文档
+   * @param template 标签模板
    * @param thumbnail 可选的缩略图 base64，不传则自动生成
    * @param id 可选，传入则更新现有模板，不传则创建新模板
    */
   saveTemplate(
     name: string,
-    document: LabelDocument,
+    template: LabelTemplate,
     thumbnail?: string,
     id?: string
   ): Observable<StoredTemplate> {
     const now = new Date().toISOString();
     const templateId = id || `tpl-${Date.now()}`;
 
-    return from(this.generateThumbnailAsync(document)).pipe(
+    return from(this.generateThumbnailAsync(template)).pipe(
       map(generatedThumbnail => {
-        const template: StoredTemplate = {
+        const storedTemplate: StoredTemplate = {
           id: templateId,
           name,
-          document,
+          width: template.width,
+          height: template.height,
+          backgroundColor: template.backgroundColor,
+          backgroundImage: template.backgroundImage,
+          canvasJson: template.canvasJson,
+          printSetting: template.printSetting,
           thumbnail: thumbnail || generatedThumbnail,
           createdAt: now,
           updatedAt: now
         };
-        return template;
+        return storedTemplate;
       }),
-      switchMap(template =>
+      switchMap(stored =>
         this.storage.getById(templateId).pipe(
           map(existing => {
             if (existing) {
-              template.createdAt = existing.createdAt;
+              stored.createdAt = existing.createdAt;
             }
-            return template;
+            return stored;
           }),
           switchMap(t => this.storage.save(t).pipe(map(() => t)))
         )
@@ -77,23 +82,22 @@ export class TemplateService {
 
   /**
    * 生成缩略图
-   * 从文档的第一页生成 200x200 的 base64 PNG
+   * 从模板生成 200x200 的 base64 PNG
    */
-  generateThumbnail(document: LabelDocument): Observable<string> {
-    return from(this.generateThumbnailAsync(document));
+  generateThumbnail(template: LabelTemplate): Observable<string> {
+    return from(this.generateThumbnailAsync(template));
   }
 
   /**
    * 异步生成缩略图
    */
-  private async generateThumbnailAsync(document: LabelDocument): Promise<string> {
-    const firstPage = document.pages?.[0];
-    if (!firstPage?.canvasJson) {
+  private async generateThumbnailAsync(template: LabelTemplate): Promise<string> {
+    if (!template.canvasJson) {
       return '';
     }
 
     try {
-      return await this.renderCanvasToThumbnail(firstPage);
+      return await this.renderCanvasToThumbnail(template);
     } catch (error) {
       console.error('Failed to generate thumbnail:', error);
       return '';
@@ -103,10 +107,9 @@ export class TemplateService {
   /**
    * 渲染 Canvas 到缩略图
    */
-  private async renderCanvasToThumbnail(page: LabelPage): Promise<string> {
+  private async renderCanvasToThumbnail(template: LabelTemplate): Promise<string> {
     return new Promise((resolve, reject) => {
       const canvasElement = document.createElement('canvas');
-      const canvasState = page.canvasState ?? DEFAULT_CANVAS_STATE;
 
       // 设置缩略图尺寸 200x200
       const thumbWidth = 200;
@@ -122,28 +125,29 @@ export class TemplateService {
 
       // 设置原始尺寸
       canvas.setDimensions({
-        width: canvasState.width,
-        height: canvasState.height
+        width: template.width,
+        height: template.height
       });
 
       // 设置背景
-      if (canvasState.backgroundImage) {
+      const bgImage = template.backgroundImage;
+      if (bgImage) {
         // 异步加载背景图
         import('fabric').then(({ FabricImage, Pattern }) => {
-          FabricImage.fromURL(canvasState.backgroundImage).then((image) => {
+          FabricImage.fromURL(bgImage).then((image) => {
             const pattern = new Pattern({
               source: image.getElement(),
               repeat: 'repeat'
             });
             canvas.backgroundColor = pattern;
-            this.loadAndRender(canvas, page.canvasJson!, thumbWidth, thumbHeight)
+            this.loadAndRender(canvas, template.canvasJson!, thumbWidth, thumbHeight)
               .then(resolve)
               .catch(reject);
           }).catch(reject);
         }).catch(reject);
       } else {
-        canvas.backgroundColor = canvasState.backgroundColor;
-        this.loadAndRender(canvas, page.canvasJson!, thumbWidth, thumbHeight)
+        canvas.backgroundColor = template.backgroundColor;
+        this.loadAndRender(canvas, template.canvasJson!, thumbWidth, thumbHeight)
           .then(resolve)
           .catch(reject);
       }
