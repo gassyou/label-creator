@@ -18,10 +18,11 @@ import { PrintSetting, PAPER_SIZES, DEFAULT_PRINT_SETTING } from '../../models/l
 export class PrintSettingDialogComponent {
   readonly printSetting = input.required<PrintSetting>();
   readonly settingChanged = output<PrintSetting>();
+  readonly closed = output<void>();
 
-  visible = true;
+  readonly visible = input(true);
 
-  readonly paperSizes = [
+  static readonly paperSizes = [
     { value: 'A4', label: 'A4 (210 x 297 mm)' },
     { value: 'A5', label: 'A5 (148 x 210 mm)' },
     { value: 'letter', label: 'Letter (216 x 279 mm)' },
@@ -30,10 +31,9 @@ export class PrintSettingDialogComponent {
 
   onOk(): void {
     this.settingChanged.emit(this.printSetting());
-    this.visible = false;
   }
 
   onCancel(): void {
-    this.visible = false;
+    this.closed.emit();
   }
 }
