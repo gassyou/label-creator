@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { NzIconModule } from 'ng-zorro-antd/icon';
 import {
   EditorCanvasState,
   LabelPage,
@@ -10,7 +11,7 @@ import {
 
 @Component({
   selector: 'app-editor-properties-panel',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, NzIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor-properties-panel.html',
   styleUrl: './editor-properties-panel.scss'
@@ -44,13 +45,10 @@ export class EditorPropertiesPanelComponent {
   readonly strokeChanged = output<string>();
   readonly strokeWidthChanged = output<number>();
   readonly fontFamilyChanged = output<string>();
-  readonly textAlignChanged = output<string>();
   readonly boldToggled = output<void>();
   readonly italicToggled = output<void>();
   readonly textDecorationToggled = output<string>();
   readonly fontSizeChanged = output<number>();
-  readonly lineHeightChanged = output<number>();
-  readonly charSpacingChanged = output<number>();
   readonly textChanged = output<string>();
   readonly colorChanged = output<string>();
   readonly bindingChanged = output<string>();

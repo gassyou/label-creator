@@ -224,81 +224,12 @@
           </label>
 
           <label>
-            <span>Text Align</span>
-            <div class="segmented">
-              @for (align of ['left', 'center', 'right', 'justify']; track align) {
-                <button
-                  type="button"
-                  [class.active]="selectionState().textAlign === align"
-                  (click)="textAlignChanged.emit(align)"
-                >
-                  {{ align === 'justify' ? 'Justify' : align | titlecase }}
-                </button>
-              }
-            </div>
-          </label>
-
-          <div class="inline-actions">
-            <button
-              type="button"
-              class="secondary"
-              [class.active]="selectionState().fontWeight === 'bold'"
-              (click)="boldToggled.emit()"
-            >
-              Bold
-            </button>
-            <button
-              type="button"
-              class="secondary"
-              [class.active]="selectionState().fontStyle === 'italic'"
-              (click)="italicToggled.emit()"
-            >
-              Italic
-            </button>
-            <button
-              type="button"
-              class="secondary"
-              [class.active]="selectionState().textDecoration.includes('underline')"
-              (click)="textDecorationToggled.emit('underline')"
-            >
-              Underline
-            </button>
-            <button
-              type="button"
-              class="secondary"
-              [class.active]="selectionState().textDecoration.includes('line-through')"
-              (click)="textDecorationToggled.emit('line-through')"
-            >
-              Strike
-            </button>
-          </div>
-
-          <label>
             <span>Font Size</span>
             <input
               type="number"
               min="8"
               [ngModel]="selectionState().fontSize"
               (ngModelChange)="fontSizeChanged.emit($event)"
-            />
-          </label>
-          <label>
-            <span>Line Height</span>
-            <input
-              type="number"
-              step="0.1"
-              min="0.5"
-              [ngModel]="selectionState().lineHeight"
-              (ngModelChange)="lineHeightChanged.emit($event)"
-            />
-          </label>
-          <label>
-            <span>Character Spacing</span>
-            <input
-              type="number"
-              step="10"
-              [ngModel]="selectionState().charSpacing"
-              (ngModelChange)="charSpacingChanged.emit($event)"
             />
           </label>
         }

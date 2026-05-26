@@ -118,6 +118,7 @@ export class EditorCanvasService {
       throw new Error('Canvas not initialized');
     }
 
+    const id = this.randomId();
     const text = new IText(content.trim() || 'Text', {
       left: 24,
       top: 24,
@@ -129,13 +130,15 @@ export class EditorCanvasService {
       hasRotatingPoint: true
     });
 
-    this.extend(text, this.randomId());
+    this.extend(text, id);
+
+    // Create and track the element model BEFORE adding to canvas
+    const element = this.createElementModel(text, 'text') as TextElement;
+    this.elementRegistry.set(element.id, element);
+
     this.canvas.add(text);
     this.selectItemAfterAdded(text);
 
-    // Create and track the element model
-    const element = this.createElementModel(text, 'text') as TextElement;
-    this.elementRegistry.set(element.id, element);
     return element;
   }
 
@@ -541,15 +544,17 @@ export class EditorCanvasService {
       await this.canvas.loadFromJSON(page.canvasJson);
 
       // Rebuild element registry and extend objects with IDs after loading
+      let index = 0;
       this.canvas.forEachObject((object) => {
-        const id = this.getObjectId(object);
-        if (id) {
+        const existingId = this.getObjectId(object);
+        const id = existingId || `loaded-${Date.now()}-${index++}`;
+        if (!existingId) {
           this.extend(object, id);
-          // Create basic element model for registry
-          const elementType = this.getElementType(object);
-          const element = this.createElementModel(object, elementType);
-          this.elementRegistry.set(id, element);
         }
+        // Create basic element model for registry
+        const elementType = this.getElementType(object);
+        const element = this.createElementModel(object, elementType);
+        this.elementRegistry.set(id, element);
       });
     }
 
@@ -752,10 +757,14 @@ export class EditorCanvasService {
 
   setSelectionFontWeight(fontWeight: string): void {
     this.setActiveStyle('fontWeight', fontWeight || 'normal');
+    // Update selection state after font change
+    this.handleSelection(this.canvas?.getActiveObject() ?? null);
   }
 
   setSelectionFontStyle(fontStyle: string): void {
     this.setActiveStyle('fontStyle', fontStyle || 'normal');
+    // Update selection state after font change
+    this.handleSelection(this.canvas?.getActiveObject() ?? null);
   }
 
   setSelectionTextDecoration(textDecoration: string): void {

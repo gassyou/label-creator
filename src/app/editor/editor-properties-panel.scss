@@ -120,6 +120,30 @@ button {
   cursor: pointer;
 }
 
+button.icon-button {
+  min-width: 38px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  color: #1f2937;
+
+  span[nz-icon] {
+    font-size: 16px;
+  }
+
+  &.active {
+    background: #eff6ff;
+    color: #2563eb;
+    border-color: #bfdbfe;
+  }
+
+  &:hover:not(.active) {
+    background: #e5e7eb;
+  }
+}
+
 button.secondary {
   background: #f8fafc;
   color: #1f2937;

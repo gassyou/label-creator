@@ -27,10 +27,8 @@ import {
   EditorTool,
   getPresetById,
   LabelDocument,
-  LabelElement,
   LabelPage,
   PAGE_SIZE_PRESETS,
-  BarcodeElement,
   DEFAULT_CANVAS_STATE
 } from './models/label.models';
 import { EditorPdfService } from './editor-pdf.service';
@@ -68,8 +66,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private templateId: string | null = null;
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
-  readonly propsPanelVisible = computed(() => this.canvasService.hasSelection());
-  readonly hasSelection = computed(() => this.canvasService.hasSelection());
+  readonly propsPanelVisible = computed(() => !!this.selectionState().id);
+  readonly hasSelection = computed(() => !!this.selectionState().id);
   readonly textEditorVisible = this.canvasService.textEditorVisible.asReadonly();
   readonly figureEditorVisible = this.canvasService.figureEditorVisible.asReadonly();
   readonly jsonPreview = this.canvasService.jsonPreview.asReadonly();
@@ -99,7 +97,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
       untracked(() => {
         this.persistCurrentPageSnapshot();
-        // Mark document as dirty when canvas changes
         this.isDirty.set(true);
       });
     });
