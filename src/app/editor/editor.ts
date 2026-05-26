@@ -3,34 +3,41 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  HostListener,
   OnDestroy,
   ViewChild,
   computed,
   effect,
   inject,
   signal,
-  untracked
+  untracked,
+  OnInit
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+import { NzMessageService } from 'ng-zorro-antd/message';
 import { EditorCanvasService } from './editor-canvas.service';
 import {
   createCanvasState,
   createEditorPage,
   DEFAULT_SELECTION_STATE,
   EditorCanvasState,
-  EditorDocumentState,
-  EditorPage,
+  EditorState,
   EditorSelectionState,
   EditorTool,
   getPresetById,
+  LabelDocument,
   LabelElement,
+  LabelPage,
   PAGE_SIZE_PRESETS,
-  BarcodeElement
-} from './editor.models';
+  BarcodeElement,
+  DEFAULT_CANVAS_STATE
+} from './models/label.models';
 import { EditorPdfService } from './editor-pdf.service';
 import { EditorPropertiesPanelComponent } from './editor-properties-panel';
 import { EditorTopbarComponent } from './editor-topbar';
 import { EditorToolStripComponent } from './editor-tool-strip';
+import { TemplateService } from '../template/template.service';
 
 @Component({
   selector: 'app-editor',
@@ -40,16 +47,24 @@ import { EditorToolStripComponent } from './editor-tool-strip';
   templateUrl: './editor.html',
   styleUrl: './editor.scss'
 })
-export class EditorComponent implements AfterViewInit, OnDestroy {
+export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('htmlCanvas', { static: true }) htmlCanvas!: ElementRef<HTMLCanvasElement>;
 
   readonly canvasService = inject(EditorCanvasService);
   private readonly pdfService = inject(EditorPdfService);
+  private readonly templateService = inject(TemplateService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly message = inject(NzMessageService);
 
   readonly activeTool = signal<EditorTool>('select');
-  readonly documentState = signal<EditorDocumentState>(this.createInitialDocument());
-  readonly canvasState = signal<EditorCanvasState>(this.documentState().pages[0].canvasState);
+  readonly documentState = signal<EditorState>(this.createInitialDocument());
+  readonly canvasState = signal<EditorCanvasState>(this.getInitialCanvasState());
   readonly selectionState = signal<EditorSelectionState>({ ...DEFAULT_SELECTION_STATE });
+  readonly templateName = signal('未命名');
+
+  /** 当前编辑的模板ID，无则为新建 */
+  private templateId: string | null = null;
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
   readonly propsPanelVisible = computed(() => !!this.canvasService.selected());
@@ -84,15 +99,70 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  ngOnInit(): void {
+    // Check route for template ID
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.templateId = id;
+    }
+  }
+
   ngAfterViewInit(): void {
     const page = this.activePage();
-    this.canvasService.initialize(this.htmlCanvas.nativeElement, page.canvasState);
+    const canvasState = page.canvasState ?? DEFAULT_CANVAS_STATE;
+    this.canvasService.initialize(this.htmlCanvas.nativeElement, canvasState);
     this.hasCanvasInitialized = true;
+
+    // Load template after canvas is initialized
+    if (this.templateId) {
+      this.loadTemplate(this.templateId);
+    }
+
     this.persistCurrentPageSnapshot();
   }
 
   ngOnDestroy(): void {
     this.canvasService.destroy();
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  handleKeyDown(event: KeyboardEvent): void {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const modifier = isMac ? event.metaKey : event.ctrlKey;
+
+    if (modifier && event.key === 's') {
+      event.preventDefault();
+      this.saveToTemplate();
+      return;
+    }
+
+    if (modifier && event.key === 'c') {
+      event.preventDefault();
+      this.canvasService.copySelected();
+      return;
+    }
+
+    if (modifier && event.key === 'v') {
+      event.preventDefault();
+      this.canvasService.pasteClipboard();
+      return;
+    }
+
+    if (modifier && event.key === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) {
+        this.canvasService.redo();
+      } else {
+        this.canvasService.undo();
+      }
+      return;
+    }
+
+    if (modifier && event.key === 'y') {
+      event.preventDefault();
+      this.canvasService.redo();
+      return;
+    }
   }
 
   activateTool(tool: EditorTool): void {
@@ -125,7 +195,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     this.canvasState.update((state) => ({ ...state, backgroundColor }));
     this.updateActivePage((page) => ({
       ...page,
-      canvasState: { ...page.canvasState, backgroundColor }
+      canvasState: { ...page.canvasState!, backgroundColor }
     }));
     this.canvasService.applyCanvasFill(backgroundColor, this.canvasState().backgroundImage);
   }
@@ -134,7 +204,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     this.canvasState.update((state) => ({ ...state, backgroundImage }));
     this.updateActivePage((page) => ({
       ...page,
-      canvasState: { ...page.canvasState, backgroundImage }
+      canvasState: { ...page.canvasState!, backgroundImage }
     }));
   }
 
@@ -302,6 +372,74 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
   }
 
+  /**
+   * 保存模板到存储
+   */
+  saveToTemplate(): void {
+    this.persistCurrentPageSnapshot();
+    const doc = this.buildLabelDocument();
+    const name = this.templateName() || `模板 ${new Date().toLocaleString()}`;
+
+    this.templateService.saveTemplate(name, doc, undefined, this.templateId ?? undefined).subscribe({
+      next: (template) => {
+        this.templateId = template.id;
+        this.message.success('保存成功');
+      },
+      error: () => this.message.error('保存失败')
+    });
+  }
+
+  /**
+   * 返回列表页
+   */
+  backToList(): void {
+    this.router.navigate(['/']);
+  }
+
+  /**
+   * 加载模板到编辑器
+   */
+  private async loadTemplate(id: string): Promise<void> {
+    this.templateService.getTemplate(id).subscribe({
+      next: async (template) => {
+        if (!template) {
+          this.message.error('模板不存在');
+          return;
+        }
+        this.templateName.set(template.name || '未命名');
+        const doc = template.document;
+        if (doc?.pages?.length) {
+          this.documentState.set({
+            activePageId: doc.pages[0].id,
+            pages: doc.pages
+          });
+          // Load first page to canvas
+          const firstPage = doc.pages[0];
+          this.canvasState.set(firstPage.canvasState ?? DEFAULT_CANVAS_STATE);
+          await this.canvasService.loadPage(firstPage);
+        }
+      },
+      error: () => this.message.error('加载模板失败')
+    });
+  }
+
+  updateTemplateName(name: string): void {
+    this.templateName.set(name || '未命名');
+  }
+
+  private buildLabelDocument(): LabelDocument {
+    const state = this.documentState();
+    return {
+      id: this.templateId || `doc-${Date.now()}`,
+      name: '',
+      version: '1.0.0',
+      layouts: [],
+      templates: [],
+      pages: state.pages,
+      resources: []
+    };
+  }
+
   saveCanvasToJSON(): void {
     this.persistCurrentPageSnapshot();
     localStorage.setItem('KanvasDocument', JSON.stringify(this.documentState()));
@@ -313,10 +451,10 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    const documentState = JSON.parse(saved) as EditorDocumentState;
+    const documentState = JSON.parse(saved) as EditorState;
     const activePage = documentState.pages.find((page) => page.id === documentState.activePageId) ?? documentState.pages[0];
     this.documentState.set(documentState);
-    this.canvasState.set(activePage.canvasState);
+    this.canvasState.set(activePage.canvasState ?? DEFAULT_CANVAS_STATE);
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
     await this.canvasService.loadPage(activePage);
   }
@@ -354,7 +492,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     }
 
     this.documentState.update((state) => ({ ...state, activePageId: pageId }));
-    this.canvasState.set(page.canvasState);
+    this.canvasState.set(page.canvasState ?? DEFAULT_CANVAS_STATE);
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
     await this.canvasService.loadPage(page);
   }
@@ -368,7 +506,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
       pages: [...state.pages, page]
     }));
 
-    this.canvasState.set(page.canvasState);
+    this.canvasState.set(page.canvasState ?? DEFAULT_CANVAS_STATE);
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
     await this.canvasService.loadPage(page);
   }
@@ -376,19 +514,19 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
   async duplicatePage(): Promise<void> {
     this.persistCurrentPageSnapshot();
     const source = this.activePage();
-    const page: EditorPage = {
+    const page: LabelPage = {
       ...source,
       id: `page-${Date.now()}-${this.pages().length + 1}`,
       name: `${source.name} Copy`,
       canvasState: { ...source.canvasState }
-    };
+    } as LabelPage;
 
     this.documentState.update((state) => ({
       activePageId: page.id,
       pages: [...state.pages, page]
     }));
 
-    this.canvasState.set(page.canvasState);
+    this.canvasState.set(page.canvasState ?? DEFAULT_CANVAS_STATE);
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
     await this.canvasService.loadPage(page);
   }
@@ -407,7 +545,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
       pages: remainingPages
     });
 
-    this.canvasState.set(nextPage.canvasState);
+    this.canvasState.set(nextPage.canvasState ?? DEFAULT_CANVAS_STATE);
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
     await this.canvasService.loadPage(nextPage);
   }
@@ -446,12 +584,17 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     this.persistCurrentPageSnapshot();
   }
 
-  private createInitialDocument(): EditorDocumentState {
+  private createInitialDocument(): EditorState {
     const firstPage = createEditorPage(1);
     return {
       activePageId: firstPage.id,
       pages: [firstPage]
     };
+  }
+
+  private getInitialCanvasState(): EditorCanvasState {
+    const firstPage = createEditorPage(1);
+    return firstPage.canvasState ?? DEFAULT_CANVAS_STATE;
   }
 
   private persistCurrentPageSnapshot(): void {
@@ -473,7 +616,7 @@ export class EditorComponent implements AfterViewInit, OnDestroy {
     }));
   }
 
-  private updateActivePage(updater: (page: EditorPage) => EditorPage): void {
+  private updateActivePage(updater: (page: LabelPage) => LabelPage): void {
     const activePageId = this.activePage().id;
     this.documentState.update((state) => ({
       ...state,

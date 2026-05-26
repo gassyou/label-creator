@@ -3,8 +3,9 @@
     [hasSelection]="propsPanelVisible()"
     [hasMultiSelection]="hasMultiSelection()"
     [zoom]="canvasService.zoom()"
-    (saveRequested)="saveCanvasToJSON()"
-    (loadRequested)="loadCanvasFromJSON()"
+    [templateName]="templateName()"
+    (saveRequested)="saveToTemplate()"
+    (backRequested)="backToList()"
     (svgRequested)="rasterizeSVG()"
     (pngRequested)="rasterize()"
     (pdfRequested)="exportPdf()"
@@ -22,6 +23,7 @@
     (alignBottomRequested)="alignObjects('bottom')"
     (distributeHRequested)="distributeObjects('horizontal')"
     (distributeVRequested)="distributeObjects('vertical')"
+    (templateNameChanged)="updateTemplateName($event)"
   />
 
   <div class="workspace">

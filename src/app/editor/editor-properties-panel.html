@@ -17,7 +17,7 @@
         >
           <span class="page-card__title">{{ page.name }}</span>
           <span class="page-card__meta">{{ page.widthMm }} × {{ page.heightMm }} mm</span>
-          <span class="page-card__meta">{{ page.canvasState.width }} × {{ page.canvasState.height }} px</span>
+          <span class="page-card__meta">{{ page.canvasState?.width ?? 0 }} × {{ page.canvasState?.height ?? 0 }} px</span>
         </button>
       }
     </div>

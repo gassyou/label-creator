@@ -15,17 +15,17 @@ import {
   DEFAULT_CANVAS_STATE,
   DEFAULT_SELECTION_STATE,
   EditorCanvasState,
-  EditorPage,
   EditorSelectionState,
   ElementType,
   LabelElement,
+  LabelPage,
   LineElement,
   millimetersToPixels,
   QRCodeElement,
   TextElement,
   TriangleElement,
   RectElement
-} from './editor.models';
+} from './models/label.models';
 
 @Injectable()
 export class EditorCanvasService {
@@ -43,6 +43,14 @@ export class EditorCanvasService {
 
   // Element registry for tracking all elements on canvas
   private elementRegistry: Map<string, LabelElement> = new Map();
+
+  // Clipboard for copy/paste
+  private clipboard: any[] = [];
+
+  // Undo/Redo stacks
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
+  private maxUndoLevels = 50;
 
   initialize(element: HTMLCanvasElement, canvasState: EditorCanvasState): void {
     this.canvas?.dispose();
@@ -324,6 +332,98 @@ export class EditorCanvasService {
     });
   }
 
+  copySelected(): void {
+    const activeObjects = this.canvas?.getActiveObjects();
+    if (!this.canvas || !activeObjects || activeObjects.length === 0) {
+      return;
+    }
+
+    this.clipboard = [];
+    Promise.all(activeObjects.map(obj => obj.clone())).then((clones) => {
+      this.clipboard = clones;
+    });
+  }
+
+  pasteClipboard(): void {
+    if (!this.canvas || this.clipboard.length === 0) {
+      return;
+    }
+
+    this.saveUndoState();
+    const newObjects: any[] = [];
+
+    this.clipboard.forEach((clone) => {
+      clone.set({
+        left: (clone.left ?? 0) + 20,
+        top: (clone.top ?? 0) + 20
+      });
+      this.extend(clone, this.randomId());
+      this.canvas?.add(clone);
+      newObjects.push(clone);
+    });
+
+    if (newObjects.length === 1) {
+      this.canvas?.setActiveObject(newObjects[0]);
+    } else if (newObjects.length > 1) {
+      import('fabric').then(({ ActiveSelection }) => {
+        const selection = new ActiveSelection(newObjects, { canvas: this.canvas! });
+        this.canvas?.setActiveObject(selection);
+        this.canvas?.requestRenderAll();
+      });
+    }
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  undo(): void {
+    if (!this.canvas || this.undoStack.length === 0) {
+      return;
+    }
+
+    const currentState = JSON.stringify(this.canvas.toJSON());
+    this.redoStack.push(currentState);
+
+    const previousState = this.undoStack.pop();
+    if (previousState) {
+      this.canvas.loadFromJSON(previousState).then(() => {
+        this.canvas?.requestRenderAll();
+        this.touchRevision();
+      });
+    }
+  }
+
+  redo(): void {
+    if (!this.canvas || this.redoStack.length === 0) {
+      return;
+    }
+
+    const currentState = JSON.stringify(this.canvas.toJSON());
+    this.undoStack.push(currentState);
+
+    const nextState = this.redoStack.pop();
+    if (nextState) {
+      this.canvas.loadFromJSON(nextState).then(() => {
+        this.canvas?.requestRenderAll();
+        this.touchRevision();
+      });
+    }
+  }
+
+  private saveUndoState(): void {
+    if (!this.canvas || this.hydrating) {
+      return;
+    }
+
+    const state = JSON.stringify(this.canvas.toJSON());
+    this.undoStack.push(state);
+
+    if (this.undoStack.length > this.maxUndoLevels) {
+      this.undoStack.shift();
+    }
+
+    this.redoStack = [];
+  }
+
   bringSelectionToFront(): void {
     const activeObjects = this.canvas?.getActiveObjects() ?? [];
     if (!this.canvas || !activeObjects.length) {
@@ -417,23 +517,24 @@ export class EditorCanvasService {
     return JSON.stringify(template, null, 2);
   }
 
-  async loadPage(page: EditorPage): Promise<void> {
+  async loadPage(page: LabelPage): Promise<void> {
     if (!this.canvas) {
       return;
     }
 
+    const canvasState = page.canvasState ?? DEFAULT_CANVAS_STATE;
     this.hydrating = true;
     this.canvas.clear();
     this.elementRegistry.clear();
     this.canvas.setDimensions({
-      width: page.canvasState.width,
-      height: page.canvasState.height
+      width: canvasState.width,
+      height: canvasState.height
     });
 
-    if (page.canvasState.backgroundImage) {
-      await this.applyCanvasImageToCanvas(page.canvasState.backgroundImage);
+    if (canvasState.backgroundImage) {
+      await this.applyCanvasImageToCanvas(canvasState.backgroundImage);
     } else {
-      this.canvas.backgroundColor = page.canvasState.backgroundColor;
+      this.canvas.backgroundColor = canvasState.backgroundColor;
     }
 
     if (page.canvasJson) {

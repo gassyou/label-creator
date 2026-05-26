@@ -13,9 +13,10 @@ export class EditorTopbarComponent {
   readonly hasSelection = input(false);
   readonly hasMultiSelection = input(false);
   readonly zoom = input(1);
+  readonly templateName = input('未命名');
 
   readonly saveRequested = output<void>();
-  readonly loadRequested = output<void>();
+  readonly backRequested = output<void>();
   readonly svgRequested = output<void>();
   readonly pngRequested = output<void>();
   readonly pdfRequested = output<void>();
@@ -33,4 +34,5 @@ export class EditorTopbarComponent {
   readonly alignBottomRequested = output<void>();
   readonly distributeHRequested = output<void>();
   readonly distributeVRequested = output<void>();
+  readonly templateNameChanged = output<string>();
 }

@@ -21,10 +21,15 @@ import {
   VerticalAlignMiddleOutline,
   VerticalAlignBottomOutline,
   ColumnWidthOutline,
-  ColumnHeightOutline
+  ColumnHeightOutline,
+  PlusOutline,
+  EditOutline,
+  FileTextOutline,
+  FileImageOutline as FileImageOutlineIcon
 } from '@ant-design/icons-angular/icons';
 
 import { routes } from './app.routes';
+import { TemplateStorageService, LocalStorageTemplateService } from './template/template.storage';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -50,7 +55,12 @@ export const appConfig: ApplicationConfig = {
       VerticalAlignMiddleOutline,
       VerticalAlignBottomOutline,
       ColumnWidthOutline,
-      ColumnHeightOutline
-    ])
+      ColumnHeightOutline,
+      PlusOutline,
+      EditOutline,
+      FileTextOutline,
+      FileImageOutlineIcon
+    ]),
+    { provide: TemplateStorageService, useClass: LocalStorageTemplateService }
   ]
 };

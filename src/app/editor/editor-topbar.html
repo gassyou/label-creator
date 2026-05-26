@@ -1,5 +1,8 @@
 <header class="topbar">
   <div class="brand">
+    <button title="返回" class="btn-back" (click)="backRequested.emit()">
+      <span nz-icon nzType="arrow-left" nzTheme="outline"></span>
+    </button>
     <div class="brand-mark">LP</div>
     <div class="brand-copy">
       <p class="eyebrow">Label Designer</p>
@@ -7,16 +10,17 @@
     </div>
   </div>
 
-  <div ngToolbar class="command-toolbar" aria-label="Canvas actions">
-    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Document actions">
-      <button type="button" ngToolbarWidget value="save-local" class="toolbar-button ghost" title="Save Local" (click)="saveRequested.emit()">
-        <span nz-icon nzType="save" nzTheme="outline"></span>
-      </button>
-      <button type="button" ngToolbarWidget value="load-local" class="toolbar-button ghost" title="Load Local" (click)="loadRequested.emit()">
-        <span nz-icon nzType="folder-open" nzTheme="outline"></span>
-      </button>
-    </div>
+  <div class="template-name-section">
+    <input
+      type="text"
+      class="template-name-input"
+      [value]="templateName()"
+      (change)="templateNameChanged.emit($any($event.target).value)"
+      placeholder="未命名"
+    />
+  </div>
 
+  <div ngToolbar class="command-toolbar" aria-label="Canvas actions">
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Zoom controls">
       <button type="button" ngToolbarWidget value="zoom-out" class="toolbar-button ghost" title="Zoom Out" (click)="zoomOutRequested.emit()">
         <span nz-icon nzType="zoom-out" nzTheme="outline"></span>
