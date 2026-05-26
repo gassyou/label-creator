@@ -6,8 +6,13 @@ import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
+import { NzTableModule } from 'ng-zorro-antd/table';
+import { NzDividerModule } from 'ng-zorro-antd/divider';
 import { TemplateService } from '../template.service';
 import { StoredTemplate } from '../template.storage';
+import { GenerateLabelDialogComponent } from '../../generate-label/generate-label-dialog.component';
+import { GeneratedLabel } from '../../generate-label/generate-label.models';
+import { LabelPrintService } from '../../generate-label/label-print.service';
 
 /**
  * 模板列表组件
@@ -19,7 +24,10 @@ import { StoredTemplate } from '../template.storage';
     CommonModule,
     NzCardModule,
     NzButtonModule,
-    NzIconModule
+    NzIconModule,
+    NzTableModule,
+    NzDividerModule,
+    GenerateLabelDialogComponent
   ],
   providers: [NzMessageService, NzModalService],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -42,7 +50,7 @@ import { StoredTemplate } from '../template.storage';
       } @else {
         <div class="template-grid">
           @for (template of templates(); track template.id) {
-            <nz-card class="template-card" [nzActions]="[editBtn, deleteBtn]">
+            <nz-card class="template-card" [nzActions]="[actionPrinter, actionEdit, actionDelete]">
               <div class="card-content">
                 @if (template.thumbnail) {
                   <div class="thumbnail">
@@ -58,21 +66,28 @@ import { StoredTemplate } from '../template.storage';
                   <p class="update-time">更新于 {{ formatDate(template.updatedAt) }}</p>
                 </div>
               </div>
+              <ng-template #actionPrinter>
+                <span nz-icon nzType="printer" (click)="generateLabels(template)"></span>
+              </ng-template>
+              <ng-template #actionEdit>
+                <span nz-icon nzType="edit" (click)="editTemplate(template)"></span>
+              </ng-template>
+              <ng-template #actionDelete>
+                <span nz-icon nzType="delete" (click)="confirmDelete(template)"></span>
+              </ng-template>
             </nz-card>
-            <ng-template #editBtn>
-              <button nz-button nzType="text" nzSize="small" (click)="editTemplate(template)">
-                <span nz-icon nzType="edit"></span>
-              </button>
-            </ng-template>
-            <ng-template #deleteBtn>
-              <button nz-button nzType="text" nzSize="small" nzDanger (click)="confirmDelete(template)">
-                <span nz-icon nzType="delete"></span>
-              </button>
-            </ng-template>
           }
         </div>
       }
     </div>
+
+    <!-- 生成标签对话框 -->
+    <app-generate-label-dialog
+      [visible]="dialogVisible()"
+      [template]="selectedTemplate()"
+      (labelsGenerated)="handleLabelsGenerated($event)"
+      (dialogClosed)="closeDialog()"
+    ></app-generate-label-dialog>
   `,
   styles: [`
     .template-list-container {
@@ -173,24 +188,27 @@ import { StoredTemplate } from '../template.storage';
           color: #8c8c8c;
         }
       }
-    }
 
-    :host ::ng-deep .ant-card-actions {
-      display: flex;
-      justify-content: center;
+      .card-actions {
+        display: flex;
+        gap: 16px;
+        margin-top: 8px;
+        padding-top: 12px;
+        border-top: 1px solid #f0f0f0;
 
-      li {
-        width: 50%;
-      }
+        span[nz-icon] {
+          cursor: pointer;
+          font-size: 18px;
+          color: #8c8c8c;
 
-      button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
+          &:hover {
+            color: #1677ff;
+          }
 
-      span[nz-icon] {
-        font-size: 16px;
+          &[nzType="delete"]:hover {
+            color: #ff4d4f;
+          }
+        }
       }
     }
   `]
@@ -200,8 +218,12 @@ export class TemplateListComponent {
   private readonly router = inject(Router);
   private readonly modal = inject(NzModalService);
   private readonly message = inject(NzMessageService);
+  private readonly labelPrintService = inject(LabelPrintService);
 
   readonly templates = signal<StoredTemplate[]>([]);
+  readonly dialogVisible = signal(false);
+  readonly selectedTemplate = signal<StoredTemplate | null>(null);
+  readonly generatedLabels = signal<GeneratedLabel[]>([]);
 
   constructor() {
     this.loadTemplates();
@@ -229,6 +251,77 @@ export class TemplateListComponent {
    */
   editTemplate(template: StoredTemplate): void {
     this.router.navigate(['/editor', template.id]);
+  }
+
+  /**
+   * 生成标签
+   */
+  generateLabels(template: StoredTemplate): void {
+    this.selectedTemplate.set(template);
+    this.dialogVisible.set(true);
+  }
+
+  /**
+   * 关闭对话框
+   */
+  closeDialog(): void {
+    this.dialogVisible.set(false);
+    this.selectedTemplate.set(null);
+  }
+
+  /**
+   * 处理生成的标签数据
+   */
+  handleLabelsGenerated(labels: GeneratedLabel[]): void {
+    this.generatedLabels.set(labels);
+    this.showLabelActionsModal(labels);
+  }
+
+  /**
+   * 显示标签操作选项模态框
+   */
+  private showLabelActionsModal(labels: GeneratedLabel[]): void {
+    this.modal.info({
+      nzTitle: '标签生成完成',
+      nzContent: `已成功生成 ${labels.length} 条标签数据`,
+      nzOkText: '关闭',
+      nzWidth: 600,
+      nzFooter: [
+        {
+          label: '打印标签',
+          type: 'primary',
+          onClick: () => {
+            this.labelPrintService.printLabels(labels);
+            this.message.success('打印对话框已打开');
+            this.modal.closeAll();
+          }
+        },
+        {
+          label: '导出 CSV',
+          onClick: () => {
+            this.labelPrintService.exportAsCSV(labels);
+            this.message.success('CSV 文件已下载');
+            this.modal.closeAll();
+          }
+        },
+        {
+          label: '导出 JSON',
+          onClick: () => {
+            this.labelPrintService.exportAsJSON(labels);
+            this.message.success('JSON 文件已下载');
+            this.modal.closeAll();
+          }
+        },
+        {
+          label: '导出 PDF',
+          onClick: () => {
+            this.labelPrintService.exportAsPDF(labels);
+            this.message.success('PDF 文件已下载');
+            this.modal.closeAll();
+          }
+        }
+      ]
+    });
   }
 
   /**

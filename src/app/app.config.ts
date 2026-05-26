@@ -1,6 +1,9 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideAntIcons } from '@ant-design/icons-angular';
+import { provideNzI18n, zh_CN } from 'ng-zorro-antd/i18n';
+import { registerLocaleData } from '@angular/common';
+import zh from '@angular/common/locales/zh';
 import {
   SaveOutline,
   FolderOpenOutline,
@@ -30,6 +33,8 @@ import {
 
 import { routes } from './app.routes';
 import { TemplateStorageService, LocalStorageTemplateService } from './template/template.storage';
+
+registerLocaleData(zh);
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -61,6 +66,7 @@ export const appConfig: ApplicationConfig = {
       FileTextOutline,
       FileImageOutlineIcon
     ]),
+    provideNzI18n(zh_CN),
     { provide: TemplateStorageService, useClass: LocalStorageTemplateService }
   ]
 };
