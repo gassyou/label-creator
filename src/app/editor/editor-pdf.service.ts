@@ -1,10 +1,10 @@
 import { Injectable } from '@angular/core';
 import { Canvas, FabricImage, Pattern } from 'fabric';
-import { EditorPage } from './editor.models';
+import { LabelPage, millimetersToPixels } from './models/label.models';
 
 @Injectable()
 export class EditorPdfService {
-  async exportDocument(pages: EditorPage[], fileName = 'document.pdf'): Promise<void> {
+  async exportDocument(pages: LabelPage[], fileName = 'document.pdf'): Promise<void> {
     if (!pages.length) {
       return;
     }
@@ -31,26 +31,30 @@ export class EditorPdfService {
     pdf?.save(fileName);
   }
 
-  private async renderPageToPng(page: EditorPage): Promise<string> {
+  private async renderPageToPng(page: LabelPage): Promise<string> {
     const element = document.createElement('canvas');
     const canvas = new Canvas(element, {
       selection: false,
       renderOnAddRemove: false
     });
 
+    // 将毫米转换为像素
+    const widthPx = millimetersToPixels(page.widthMm);
+    const heightPx = millimetersToPixels(page.heightMm);
+
     canvas.setDimensions({
-      width: page.canvasState.width,
-      height: page.canvasState.height
+      width: widthPx,
+      height: heightPx
     });
 
-    if (page.canvasState.backgroundImage) {
-      const image = await FabricImage.fromURL(page.canvasState.backgroundImage);
+    if (page.backgroundImage) {
+      const image = await FabricImage.fromURL(page.backgroundImage);
       canvas.backgroundColor = new Pattern({
         source: image.getElement(),
         repeat: 'repeat'
       });
     } else {
-      canvas.backgroundColor = page.canvasState.backgroundColor;
+      canvas.backgroundColor = page.backgroundColor;
     }
 
     if (page.canvasJson) {

@@ -3,10 +3,10 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 import { FormsModule } from '@angular/forms';
 import {
   EditorCanvasState,
-  EditorPage,
+  LabelPage,
   EditorSelectionState,
   PageSizePreset
-} from './editor.models';
+} from './models/label.models';
 
 @Component({
   selector: 'app-editor-properties-panel',
@@ -17,8 +17,8 @@ import {
 })
 export class EditorPropertiesPanelComponent {
   readonly canvasState = input.required<EditorCanvasState>();
-  readonly pages = input.required<EditorPage[]>();
-  readonly activePage = input.required<EditorPage>();
+  readonly pages = input.required<LabelPage[]>();
+  readonly activePage = input.required<LabelPage>();
   readonly activePageId = input.required<string>();
   readonly pageSizePresets = input.required<ReadonlyArray<PageSizePreset>>();
   readonly selectionState = input.required<EditorSelectionState>();
@@ -41,6 +41,8 @@ export class EditorPropertiesPanelComponent {
   readonly idChanged = output<string>();
   readonly opacityChanged = output<number>();
   readonly fillChanged = output<string>();
+  readonly strokeChanged = output<string>();
+  readonly strokeWidthChanged = output<number>();
   readonly fontFamilyChanged = output<string>();
   readonly textAlignChanged = output<string>();
   readonly boldToggled = output<void>();
@@ -49,4 +51,12 @@ export class EditorPropertiesPanelComponent {
   readonly fontSizeChanged = output<number>();
   readonly lineHeightChanged = output<number>();
   readonly charSpacingChanged = output<number>();
+  readonly textChanged = output<string>();
+  readonly colorChanged = output<string>();
+  readonly bindingChanged = output<string>();
+  readonly barcodeFormatChanged = output<string>();
+  readonly barcodeShowTextChanged = output<boolean>();
+  readonly errorCorrectionLevelChanged = output<string>();
+  readonly foregroundColorChanged = output<string>();
+  readonly backgroundColorChanged = output<string>();
 }

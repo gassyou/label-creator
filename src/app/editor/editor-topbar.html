@@ -1,5 +1,8 @@
 <header class="topbar">
   <div class="brand">
+    <button title="返回" class="btn-back" (click)="backRequested.emit()">
+      <span nz-icon nzType="arrow-left" nzTheme="outline"></span>
+    </button>
     <div class="brand-mark">LP</div>
     <div class="brand-copy">
       <p class="eyebrow">Label Designer</p>
@@ -7,38 +10,39 @@
     </div>
   </div>
 
-  <div ngToolbar class="command-toolbar" aria-label="Canvas actions">
-    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Document actions">
-      <button type="button" ngToolbarWidget value="save-local" class="toolbar-button ghost" (click)="saveRequested.emit()">
-        Save Local
-      </button>
-      <button type="button" ngToolbarWidget value="load-local" class="toolbar-button ghost" (click)="loadRequested.emit()">
-        Load Local
-      </button>
-      <button type="button" ngToolbarWidget value="json-preview" class="toolbar-button ghost" (click)="jsonRequested.emit()">
-        JSON
-      </button>
-    </div>
+  <div class="template-name-section">
+    @if (isDirty()) {
+      <span class="dirty-indicator" title="未保存">*</span>
+    }
+    <input
+      type="text"
+      class="template-name-input"
+      [value]="templateName()"
+      (change)="templateNameChanged.emit($any($event.target).value)"
+      placeholder="未命名"
+    />
+  </div>
 
+  <div ngToolbar class="command-toolbar" aria-label="Canvas actions">
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Zoom controls">
-      <button type="button" ngToolbarWidget value="zoom-out" class="toolbar-button ghost" (click)="zoomOutRequested.emit()">
-        −
+      <button type="button" ngToolbarWidget value="zoom-out" class="toolbar-button ghost" title="Zoom Out" (click)="zoomOutRequested.emit()">
+        <span nz-icon nzType="zoom-out" nzTheme="outline"></span>
       </button>
       <span class="zoom-display">{{ (zoom() * 100).toFixed(0) }}%</span>
-      <button type="button" ngToolbarWidget value="zoom-in" class="toolbar-button ghost" (click)="zoomInRequested.emit()">
-        +
+      <button type="button" ngToolbarWidget value="zoom-in" class="toolbar-button ghost" title="Zoom In" (click)="zoomInRequested.emit()">
+        <span nz-icon nzType="zoom-in" nzTheme="outline"></span>
       </button>
     </div>
 
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Export actions">
-      <button type="button" ngToolbarWidget value="export-svg" class="toolbar-button ghost" (click)="svgRequested.emit()">
-        SVG
+      <button type="button" ngToolbarWidget value="export-svg" class="toolbar-button ghost" title="Export SVG" (click)="svgRequested.emit()">
+        <span nz-icon nzType="export" nzTheme="outline"></span>
       </button>
-      <button type="button" ngToolbarWidget value="export-png" class="toolbar-button primary" (click)="pngRequested.emit()">
-        PNG
+      <button type="button" ngToolbarWidget value="export-png" class="toolbar-button primary" title="Export PNG" (click)="pngRequested.emit()">
+        <span nz-icon nzType="file-image" nzTheme="outline"></span>
       </button>
-      <button type="button" ngToolbarWidget value="export-pdf" class="toolbar-button ghost" (click)="pdfRequested.emit()">
-        PDF
+      <button type="button" ngToolbarWidget value="export-pdf" class="toolbar-button ghost" title="Export PDF" (click)="pdfRequested.emit()">
+        <span nz-icon nzType="file-pdf" nzTheme="outline"></span>
       </button>
     </div>
 
@@ -46,22 +50,13 @@
       <button
         type="button"
         ngToolbarWidget
-        value="clone-selection"
-        class="toolbar-button ghost"
-        [disabled]="!hasSelection()"
-        (click)="cloneRequested.emit()"
-      >
-        Clone
-      </button>
-      <button
-        type="button"
-        ngToolbarWidget
         value="bring-front"
         class="toolbar-button ghost"
         [disabled]="!hasSelection()"
+        title="Bring Front"
         (click)="bringFrontRequested.emit()"
       >
-        Bring Front
+        <span nz-icon nzType="arrow-up" nzTheme="outline"></span>
       </button>
       <button
         type="button"
@@ -69,29 +64,101 @@
         value="send-back"
         class="toolbar-button ghost"
         [disabled]="!hasSelection()"
+        title="Send Back"
         (click)="sendBackRequested.emit()"
       >
-        Send Back
+        <span nz-icon nzType="arrow-down" nzTheme="outline"></span>
       </button>
+    </div>
+
+    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Alignment actions">
       <button
         type="button"
         ngToolbarWidget
-        value="unselect"
+        value="align-left"
         class="toolbar-button ghost"
         [disabled]="!hasSelection()"
-        (click)="unselectRequested.emit()"
+        title="Align Left"
+        (click)="alignLeftRequested.emit()"
       >
-        Unselect
+        <span nz-icon nzType="align-left" nzTheme="outline"></span>
       </button>
       <button
         type="button"
         ngToolbarWidget
-        value="delete-selection"
-        class="toolbar-button danger"
+        value="align-center-h"
+        class="toolbar-button ghost"
         [disabled]="!hasSelection()"
-        (click)="deleteRequested.emit()"
+        title="Align Center Horizontally"
+        (click)="alignCenterHRequested.emit()"
       >
-        Delete
+        <span nz-icon nzType="align-center" nzTheme="outline"></span>
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-right"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Right"
+        (click)="alignRightRequested.emit()"
+      >
+        <span nz-icon nzType="align-right" nzTheme="outline"></span>
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-top"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Top"
+        (click)="alignTopRequested.emit()"
+      >
+        <span nz-icon nzType="vertical-align-top" nzTheme="outline"></span>
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-center-v"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Center Vertically"
+        (click)="alignCenterVRequested.emit()"
+      >
+        <span nz-icon nzType="vertical-align-middle" nzTheme="outline"></span>
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="align-bottom"
+        class="toolbar-button ghost"
+        [disabled]="!hasSelection()"
+        title="Align Bottom"
+        (click)="alignBottomRequested.emit()"
+      >
+        <span nz-icon nzType="vertical-align-bottom" nzTheme="outline"></span>
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="distribute-h"
+        class="toolbar-button ghost"
+        [disabled]="!hasMultiSelection()"
+        title="Distribute Horizontally"
+        (click)="distributeHRequested.emit()"
+      >
+        <span nz-icon nzType="column-width" nzTheme="outline"></span>
+      </button>
+      <button
+        type="button"
+        ngToolbarWidget
+        value="distribute-v"
+        class="toolbar-button ghost"
+        [disabled]="!hasMultiSelection()"
+        title="Distribute Vertically"
+        (click)="distributeVRequested.emit()"
+      >
+        <span nz-icon nzType="column-height" nzTheme="outline"></span>
       </button>
     </div>
   </div>
