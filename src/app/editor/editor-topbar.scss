@@ -59,30 +59,45 @@ h1 {
 .template-name-section {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 4px;
 }
 
 .template-name-input {
   width: 100%;
   max-width: 300px;
   padding: 8px 12px;
-  border: 1px solid #dbe4f0;
+  border: 1px solid transparent;
   border-radius: 8px;
   font-size: 0.95rem;
   font-weight: 500;
   color: #0f172a;
-  text-align: center;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  text-align: left;
+  background: transparent;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 
   &:focus {
     outline: none;
     border-color: #2563eb;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    background: #fff;
   }
 
   &::placeholder {
     color: #94a3b8;
   }
+}
+
+.dirty-indicator {
+  color: #f97316;
+  font-size: 1.2rem;
+  font-weight: 700;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .command-toolbar {

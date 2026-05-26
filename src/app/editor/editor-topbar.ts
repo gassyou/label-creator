@@ -14,6 +14,7 @@ export class EditorTopbarComponent {
   readonly hasMultiSelection = input(false);
   readonly zoom = input(1);
   readonly templateName = input('未命名');
+  readonly isDirty = input(false);
 
   readonly saveRequested = output<void>();
   readonly backRequested = output<void>();
@@ -22,7 +23,6 @@ export class EditorTopbarComponent {
   readonly pdfRequested = output<void>();
   readonly zoomInRequested = output<void>();
   readonly zoomOutRequested = output<void>();
-  readonly cloneRequested = output<void>();
   readonly bringFrontRequested = output<void>();
   readonly sendBackRequested = output<void>();
   readonly deleteRequested = output<void>();

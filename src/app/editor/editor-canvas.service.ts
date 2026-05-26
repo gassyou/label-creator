@@ -68,8 +68,8 @@ export class EditorCanvasService {
     });
     this.canvas.backgroundColor = canvasState.backgroundColor;
 
-    this.canvas.on('selection:created', (event) => this.handleSelection(event.selected?.[0] ?? null));
-    this.canvas.on('selection:updated', (event) => this.handleSelection(event.selected?.[0] ?? null));
+    this.canvas.on('selection:created', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
+    this.canvas.on('selection:updated', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
     this.canvas.on('selection:cleared', () => this.handleSelection(null));
     this.canvas.on('object:added', () => this.touchRevision());
     this.canvas.on('object:modified', () => this.touchRevision());
@@ -539,6 +539,18 @@ export class EditorCanvasService {
 
     if (page.canvasJson) {
       await this.canvas.loadFromJSON(page.canvasJson);
+
+      // Rebuild element registry and extend objects with IDs after loading
+      this.canvas.forEachObject((object) => {
+        const id = this.getObjectId(object);
+        if (id) {
+          this.extend(object, id);
+          // Create basic element model for registry
+          const elementType = this.getElementType(object);
+          const element = this.createElementModel(object, elementType);
+          this.elementRegistry.set(id, element);
+        }
+      });
     }
 
     this.applyInteractionMode();
@@ -993,6 +1005,10 @@ export class EditorCanvasService {
     return objects ? objects.length > 1 : false;
   }
 
+  hasSelection(): boolean {
+    return !!this.canvas?.getActiveObject();
+  }
+
   // ============================================================
   // Element Registry
   // ============================================================
@@ -1191,10 +1207,10 @@ export class EditorCanvasService {
   // Element Model Creation
   // ============================================================
 
-  private createElementModel(object: any, type: ElementType): LabelElement {
+  private createElementModel(object: any, type: EditorSelectionState['type']): LabelElement {
     const base = {
       id: this.getObjectId(object),
-      type,
+      type: type as ElementType,
       x: object.left ?? 0,
       y: object.top ?? 0,
       width: (object.width ?? 100) * (object.scaleX ?? 1),
@@ -1220,7 +1236,7 @@ export class EditorCanvasService {
           lineHeight: object.lineHeight ?? 1.16,
           charSpacing: object.charSpacing ?? 0
         } as TextElement;
-      case 'rect':
+      case 'shape':
         return {
           ...base,
           type: 'rect',
@@ -1229,22 +1245,6 @@ export class EditorCanvasService {
           strokeWidth: object.strokeWidth ?? 0,
           radius: object.rx ?? 0
         } as RectElement;
-      case 'circle':
-        return {
-          ...base,
-          type: 'circle',
-          fill: object.fill ?? '#000000',
-          stroke: object.stroke ?? '',
-          strokeWidth: object.strokeWidth ?? 0
-        } as CircleElement;
-      case 'triangle':
-        return {
-          ...base,
-          type: 'triangle',
-          fill: object.fill ?? '#000000',
-          stroke: object.stroke ?? '',
-          strokeWidth: object.strokeWidth ?? 0
-        } as TriangleElement;
       case 'line':
         return {
           ...base,

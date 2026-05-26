@@ -11,6 +11,9 @@
   </div>
 
   <div class="template-name-section">
+    @if (isDirty()) {
+      <span class="dirty-indicator" title="未保存">*</span>
+    }
     <input
       type="text"
       class="template-name-input"
@@ -47,17 +50,6 @@
       <button
         type="button"
         ngToolbarWidget
-        value="clone-selection"
-        class="toolbar-button ghost"
-        [disabled]="!hasSelection()"
-        title="Clone"
-        (click)="cloneRequested.emit()"
-      >
-        <span nz-icon nzType="copy" nzTheme="outline"></span>
-      </button>
-      <button
-        type="button"
-        ngToolbarWidget
         value="bring-front"
         class="toolbar-button ghost"
         [disabled]="!hasSelection()"
@@ -76,17 +68,6 @@
         (click)="sendBackRequested.emit()"
       >
         <span nz-icon nzType="arrow-down" nzTheme="outline"></span>
-      </button>
-      <button
-        type="button"
-        ngToolbarWidget
-        value="delete-selection"
-        class="toolbar-button danger"
-        [disabled]="!hasSelection()"
-        title="Delete"
-        (click)="deleteRequested.emit()"
-      >
-        <span nz-icon nzType="delete" nzTheme="outline"></span>
       </button>
     </div>
 

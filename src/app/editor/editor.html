@@ -1,9 +1,10 @@
 <section class="editor-shell">
   <app-editor-topbar
-    [hasSelection]="propsPanelVisible()"
+    [hasSelection]="hasSelection()"
     [hasMultiSelection]="hasMultiSelection()"
     [zoom]="canvasService.zoom()"
     [templateName]="templateName()"
+    [isDirty]="isDirty()"
     (saveRequested)="saveToTemplate()"
     (backRequested)="backToList()"
     (svgRequested)="rasterizeSVG()"
@@ -14,7 +15,6 @@
     (cloneRequested)="cloneSelection()"
     (bringFrontRequested)="bringSelectionToFront()"
     (sendBackRequested)="sendSelectionToBack()"
-    (deleteRequested)="removeSelected()"
     (alignLeftRequested)="alignObjects('left')"
     (alignCenterHRequested)="alignObjects('center')"
     (alignRightRequested)="alignObjects('right')"

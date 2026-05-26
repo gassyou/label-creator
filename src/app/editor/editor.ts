@@ -62,12 +62,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly canvasState = signal<EditorCanvasState>(this.getInitialCanvasState());
   readonly selectionState = signal<EditorSelectionState>({ ...DEFAULT_SELECTION_STATE });
   readonly templateName = signal('未命名');
+  readonly isDirty = signal(false);
 
-  /** 当前编辑的模板ID，无则为新建 */
+  /** Current editing template ID, null for new */
   private templateId: string | null = null;
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
-  readonly propsPanelVisible = computed(() => !!this.canvasService.selected());
+  readonly propsPanelVisible = computed(() => this.canvasService.hasSelection());
+  readonly hasSelection = computed(() => this.canvasService.hasSelection());
   readonly textEditorVisible = this.canvasService.textEditorVisible.asReadonly();
   readonly figureEditorVisible = this.canvasService.figureEditorVisible.asReadonly();
   readonly jsonPreview = this.canvasService.jsonPreview.asReadonly();
@@ -90,12 +92,16 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     });
 
     effect(() => {
-      this.canvasService.revision();
+      const revision = this.canvasService.revision();
       if (!this.hasCanvasInitialized) {
         return;
       }
 
-      untracked(() => this.persistCurrentPageSnapshot());
+      untracked(() => {
+        this.persistCurrentPageSnapshot();
+        // Mark document as dirty when canvas changes
+        this.isDirty.set(true);
+      });
     });
   }
 
@@ -161,6 +167,18 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     if (modifier && event.key === 'y') {
       event.preventDefault();
       this.canvasService.redo();
+      return;
+    }
+
+    // Delete key - remove selected elements
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      // Don't trigger if user is typing in an input
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      event.preventDefault();
+      this.removeSelected();
       return;
     }
   }
@@ -383,6 +401,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.templateService.saveTemplate(name, doc, undefined, this.templateId ?? undefined).subscribe({
       next: (template) => {
         this.templateId = template.id;
+        this.isDirty.set(false);
         this.message.success('保存成功');
       },
       error: () => this.message.error('保存失败')
