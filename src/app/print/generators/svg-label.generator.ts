@@ -1,4 +1,4 @@
-import { Label, PrintSetting } from '../../editor/models/label.models';
+import { Label, PrintSetting, PX_PER_MM } from '../../editor/models/label.models';
 import { Canvas, FabricImage, Pattern } from 'fabric';
 import { LabelGenerator, SvgGenerateOptions } from './label-generator.interface';
 import { PrintLayoutCalculator } from './print-layout-calculator';
@@ -53,7 +53,8 @@ export class SvgLabelGenerator implements LabelGenerator {
   }
 
   async generateSingle(label: Label, options?: SvgGenerateOptions): Promise<Blob | string> {
-    const svg = await this.renderLabelToSvg(label, 2);
+    const multiplier = options?.multiplier ?? 2;
+    const svg = await this.renderLabelToSvg(label, multiplier * PX_PER_MM);
 
     if (options?.asString) {
       return svg;
@@ -114,7 +115,7 @@ export class SvgLabelGenerator implements LabelGenerator {
       }
     }
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageWidth}" height="${pageHeight}">
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageWidth * PX_PER_MM}" height="${pageHeight * PX_PER_MM}">
 ${contents.join('\n')}
 </svg>`;
   }
@@ -132,7 +133,7 @@ ${contents.join('\n')}
     }
 
     const totalHeight = pageHeight * pageCount;
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageWidth}" height="${totalHeight}">
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageWidth * PX_PER_MM}" height="${totalHeight * PX_PER_MM}">
 ${contents.join('\n')}
 </svg>`;
   }
