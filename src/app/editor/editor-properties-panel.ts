@@ -2,10 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NzIconModule } from 'ng-zorro-antd/icon';
-import {
-  EditorCanvasState,
-  EditorSelectionState
-} from './models/label.models';
+import { EditorSelectionState } from './models/label.models';
 
 @Component({
   selector: 'app-editor-properties-panel',
@@ -15,7 +12,12 @@ import {
   styleUrl: './editor-properties-panel.scss'
 })
 export class EditorPropertiesPanelComponent {
-  readonly canvasState = input.required<EditorCanvasState>();
+  readonly canvasState = input.required<{
+    width: number;
+    height: number;
+    backgroundColor: string;
+    backgroundImage?: string;
+  }>();
   readonly selectionState = input.required<EditorSelectionState>();
   readonly textEditorVisible = input(false);
   readonly figureEditorVisible = input(false);

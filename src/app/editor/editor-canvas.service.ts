@@ -11,17 +11,12 @@ import {
   util as fabricUtil
 } from 'fabric';
 import {
-  BarcodeElement,
-  CircleElement,
-  DEFAULT_CANVAS_STATE,
   DEFAULT_SELECTION_STATE,
-  EditorCanvasState,
   EditorSelectionState,
   ElementType,
   LabelElement,
   LabelPage,
   LineElement,
-  millimetersToPixels,
   QRCodeElement,
   TextElement,
   TriangleElement,
@@ -53,7 +48,7 @@ export class EditorCanvasService {
   private redoStack: string[] = [];
   private maxUndoLevels = 50;
 
-  initialize(element: HTMLCanvasElement, canvasState: EditorCanvasState): void {
+  initialize(element: HTMLCanvasElement, canvasState: { width: number; height: number; backgroundColor: string; backgroundImage?: string }): void {
     this.canvas?.dispose();
     this.canvasElement = element;
     this.canvas = new Canvas(element, {
@@ -95,19 +90,6 @@ export class EditorCanvasService {
 
   getDrawingModeEnabled(): boolean {
     return this.drawingModeEnabled;
-  }
-
-  resizeCanvas(canvasState: EditorCanvasState): void {
-    if (!this.canvas) {
-      return;
-    }
-
-    this.canvas.setDimensions({
-      width: Number(canvasState.width) || DEFAULT_CANVAS_STATE.width,
-      height: Number(canvasState.height) || DEFAULT_CANVAS_STATE.height
-    });
-    this.touchRevision();
-    this.canvas.requestRenderAll();
   }
 
   // ============================================================
@@ -588,7 +570,7 @@ export class EditorCanvasService {
       return;
     }
 
-    const canvasState = page.canvasState ?? DEFAULT_CANVAS_STATE;
+    const canvasState = page.canvasState ?? { width: 794, height: 1123, backgroundColor: '#ffffff' };
     this.hydrating = true;
     this.canvas.clear();
     this.elementRegistry.clear();
