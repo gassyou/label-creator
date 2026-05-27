@@ -5,6 +5,9 @@ export type EditorSelectionState = {
   id?: string;
   type?: 'shape' | 'text' | 'barcode' | 'qrcode' | 'line' | 'image';
   opacity: number;
+  width?: number;
+  height?: number;
+  length?: number;
   fill?: string;
   stroke?: string;
   strokeWidth?: number;

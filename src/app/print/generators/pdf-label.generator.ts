@@ -135,25 +135,49 @@ export class PdfLabelGenerator implements LabelGenerator {
     if (label.canvasJson) {
       const parsed = JSON.parse(label.canvasJson);
 
-      // Override canvas dimensions in JSON to match our label size
-      if (parsed.width) parsed.width = widthPx;
-      if (parsed.height) parsed.height = heightPx;
+      // Get canvas dimensions from JSON (in pixels)
+      const canvasWidth = parsed.width || 800;
+      const canvasHeight = parsed.height || 600;
+
+      // Calculate scale to fit canvas objects into label dimensions
+      const scaleX = widthPx / canvasWidth;
+      const scaleY = heightPx / canvasHeight;
+
+      // Scale all object positions and dimensions
+      if (parsed.objects) {
+        parsed.objects = parsed.objects.map((obj: any) => {
+          // For images (QR/barcode), only scale position, keep original dimensions
+          if (obj.type === 'image' && obj.elementType) {
+            return {
+              ...obj,
+              left: (obj.left || 0) * scaleX,
+              top: (obj.top || 0) * scaleY,
+              scaleX: 1,
+              scaleY: 1
+            };
+          }
+
+          return {
+            ...obj,
+            left: (obj.left || 0) * scaleX,
+            top: (obj.top || 0) * scaleY,
+            width: (obj.width || 100) * scaleX * (obj.scaleX || 1),
+            height: (obj.height || 50) * scaleY * (obj.scaleY || 1),
+            scaleX: 1,
+            scaleY: 1
+          };
+        });
+      }
+
+      // Set canvas dimensions to label size
+      parsed.width = widthPx;
+      parsed.height = heightPx;
 
       await canvas.loadFromJSON(parsed);
 
       // Reset viewport transform and dimensions
       canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
       canvas.setDimensions({ width: widthPx, height: heightPx });
-
-      // Force each image object to display at its natural size within object bounds
-      // This fixes QR/barcode clipping issues where the image is larger than the object
-      canvas.forEachObject((obj: any) => {
-        if (obj.type === 'image' && obj.elementType) {
-          // Reset scale to 1 and let image display at natural size
-          obj.set({ scaleX: 1, scaleY: 1 });
-          obj.setCoords();
-        }
-      });
     }
 
     canvas.requestRenderAll();

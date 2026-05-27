@@ -109,13 +109,10 @@ export class LabelDataBindingService {
     const bindingValue = obj.bindingValue || '';
     const resolvedValue = this.resolveBindingValue(bindingValue, data, unbound);
 
-    // 计算元素尺寸（mm -> px），用于生成正确大小的图片
-    const widthMm = obj.width || 50;
-    const heightMm = obj.height || 20;
-
-    // 使用 DPI 设置，1mm ≈ 3.78px (96 DPI 下)
-    const widthPx = Math.round(widthMm * 3.78);
-    const heightPx = Math.round(heightMm * 3.78);
+    // Canvas JSON 中的 width/height 是像素值，不需要转换
+    // 直接使用像素值来生成对应大小的图片
+    const widthPx = obj.width || 100;
+    const heightPx = obj.height || 50;
 
     if (elementType === 'barcode') {
       const format = obj.barcodeFormat || 'CODE128';
@@ -141,7 +138,6 @@ export class LabelDataBindingService {
       const size = Math.min(widthPx, heightPx);
       const dataUrl = await generateQRCodeSVG(resolvedValue, size);
 
-      // Reset scale to 1 so image displays at actual size within object bounds
       return { ...obj, src: dataUrl, scaleX: 1, scaleY: 1 };
     }
 

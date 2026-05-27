@@ -760,6 +760,8 @@ export class EditorCanvasService {
       id: this.getObjectId(object),
       type: objectType,
       opacity: Math.round(Number(this.getActiveStyle<number>('opacity') || 1) * 100),
+      width: Math.round((object.width || 0) * (object.scaleX || 1)),
+      height: Math.round((object.height || 0) * (object.scaleY || 1)),
       fill: String(this.getActiveStyle('fill') || DEFAULT_SELECTION_STATE.fill),
       stroke: String(object.get('stroke') || ''),
       strokeWidth: Number(object.get('strokeWidth') || 0),
@@ -772,6 +774,17 @@ export class EditorCanvasService {
       fontFamily: this.getActiveProp('fontFamily') || DEFAULT_SELECTION_STATE.fontFamily,
       textDecoration: decorations.join(' '),
     };
+
+    // Add type-specific properties
+    switch (objectType) {
+      case 'line':
+        // Calculate line length from points
+        const lineObj = object as any;
+        const x1 = lineObj.x1 || 0, y1 = lineObj.y1 || 0;
+        const x2 = lineObj.x2 || 0, y2 = lineObj.y2 || 0;
+        const length = Math.round(Math.sqrt((x2-x1)**2 + (y2-y1)**2));
+        return { ...baseState, length };
+    }
 
     // Add type-specific properties
     switch (objectType) {
@@ -862,6 +875,36 @@ export class EditorCanvasService {
 
   setSelectionOpacity(opacity: number): void {
     this.setActiveStyle('opacity', Number(opacity) / 100);
+  }
+
+  setSelectionWidth(width: number): void {
+    const object = this.canvas?.getActiveObject();
+    if (!object) return;
+    object.set({ width: Number(width), scaleX: 1 });
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  setSelectionHeight(height: number): void {
+    const object = this.canvas?.getActiveObject();
+    if (!object) return;
+    object.set({ height: Number(height), scaleY: 1 });
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
+  }
+
+  setSelectionLength(length: number): void {
+    const object = this.canvas?.getActiveObject();
+    if (!object || object.type !== 'line') return;
+    const lineObj = object as any;
+    const currentLength = Math.sqrt((lineObj.x2 - lineObj.x1) ** 2 + (lineObj.y2 - lineObj.y1) ** 2);
+    if (currentLength === 0) return;
+    const scale = Number(length) / currentLength;
+    const dx = (lineObj.x2 - lineObj.x1) * scale;
+    const dy = (lineObj.y2 - lineObj.y1) * scale;
+    lineObj.set({ x2: lineObj.x1 + dx, y2: lineObj.y1 + dy });
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
   }
 
   setSelectionFill(fill: string): void {

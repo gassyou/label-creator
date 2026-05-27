@@ -97,6 +97,43 @@
           />
         </label>
 
+        <!-- Size - for shapes, images, barcodes, qrcodes -->
+        @if (selectionState().type === 'shape' || selectionState().type === 'image' || selectionState().type === 'barcode' || selectionState().type === 'qrcode') {
+          <div class="inline-row">
+            <label>
+              <span>W(px)</span>
+              <input
+                type="number"
+                min="1"
+                [ngModel]="selectionState().width"
+                (ngModelChange)="widthChanged.emit($event)"
+              />
+            </label>
+            <label>
+              <span>H(px)</span>
+              <input
+                type="number"
+                min="1"
+                [ngModel]="selectionState().height"
+                (ngModelChange)="heightChanged.emit($event)"
+              />
+            </label>
+          </div>
+        }
+
+        <!-- Length - for lines -->
+        @if (selectionState().type === 'line') {
+          <label>
+            <span>Length</span>
+            <input
+              type="number"
+              min="1"
+              [ngModel]="selectionState().length"
+              (ngModelChange)="lengthChanged.emit($event)"
+            />
+          </label>
+        }
+
         <!-- Fill - shown for shapes only -->
         @if (selectionState().type === 'shape') {
           <label>

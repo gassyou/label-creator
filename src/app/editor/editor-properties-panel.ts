@@ -35,6 +35,9 @@ export class EditorPropertiesPanelComponent {
 
   readonly idChanged = output<string>();
   readonly opacityChanged = output<number>();
+  readonly widthChanged = output<number>();
+  readonly heightChanged = output<number>();
+  readonly lengthChanged = output<number>();
   readonly fillChanged = output<string>();
   readonly strokeChanged = output<string>();
   readonly strokeWidthChanged = output<number>();

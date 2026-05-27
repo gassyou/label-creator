@@ -286,6 +286,21 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.canvasService.setSelectionOpacity(opacity);
   }
 
+  updateSelectionWidth(width: number): void {
+    this.selectionState.update((state) => ({ ...state, width: Number(width) }));
+    this.canvasService.setSelectionWidth(width);
+  }
+
+  updateSelectionHeight(height: number): void {
+    this.selectionState.update((state) => ({ ...state, height: Number(height) }));
+    this.canvasService.setSelectionHeight(height);
+  }
+
+  updateSelectionLength(length: number): void {
+    this.selectionState.update((state) => ({ ...state, length: Number(length) }));
+    this.canvasService.setSelectionLength(length);
+  }
+
   updateSelectionFill(fill: string): void {
     this.selectionState.update((state) => ({ ...state, fill }));
     this.canvasService.setSelectionFill(fill);
