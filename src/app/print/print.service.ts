@@ -95,11 +95,23 @@ export class PrintService {
     width: number,
     height: number
   ): Promise<void> {
+    let parsed: any;
     try {
-      const parsed = JSON.parse(canvasJson);
+      parsed = JSON.parse(canvasJson);
+    } catch (e) {
+      console.error('Failed to parse canvas JSON:', e);
+      pdf.setDrawColor('#ff0000');
+      pdf.setLineWidth(0.5);
+      pdf.rect(x, y, width, height);
+      pdf.setFontSize(10);
+      pdf.setTextColor('#ff0000');
+      pdf.text('Parse Error', x + 2, y + height / 2);
+      return;
+    }
+
+    try {
       this.resolveBindingsInObjects(parsed.objects || [], data);
 
-      // Render each object
       for (const obj of parsed.objects || []) {
         if (obj.type === 'i-text' || obj.type === 'textbox') {
           const fontSize = obj.fontSize || 12;
@@ -119,6 +131,12 @@ export class PrintService {
       }
     } catch (e) {
       console.error('Failed to render label:', e);
+      pdf.setDrawColor('#ff0000');
+      pdf.setLineWidth(0.5);
+      pdf.rect(x, y, width, height);
+      pdf.setFontSize(10);
+      pdf.setTextColor('#ff0000');
+      pdf.text('Render Error', x + 2, y + height / 2);
     }
   }
 
