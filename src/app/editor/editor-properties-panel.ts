@@ -4,9 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import {
   EditorCanvasState,
-  LabelPage,
-  EditorSelectionState,
-  PageSizePreset
+  EditorSelectionState
 } from './models/label.models';
 
 @Component({

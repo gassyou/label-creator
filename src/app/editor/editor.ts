@@ -24,13 +24,12 @@ import {
   PAGE_SIZE_PRESETS,
   getPaperSize,
   millimetersToPixels,
+  pixelsToMillimeters,
   DEFAULT_CANVAS_STATE,
   EditorCanvasState,
   EditorSelectionState,
   EditorTool,
-  DEFAULT_SELECTION_STATE,
-  getPresetById,
-  createCanvasState
+  DEFAULT_SELECTION_STATE
 } from './models/label.models';
 import { EditorPdfService } from './editor-pdf.service';
 import { EditorPropertiesPanelComponent } from './editor-properties-panel';
@@ -450,8 +449,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     return {
       id: this.templateId || `tpl-${Date.now()}`,
       name: this.templateName(),
-      width: Math.round(this.canvasState().width / (96 / 25.4)),
-      height: Math.round(this.canvasState().height / (96 / 25.4)),
+      width: Math.round(pixelsToMillimeters(this.canvasState().width)),
+      height: Math.round(pixelsToMillimeters(this.canvasState().height)),
       backgroundColor: this.canvasState().backgroundColor,
       backgroundImage: this.canvasState().backgroundImage,
       canvasJson: this.canvasService.serializeCanvas(),
@@ -469,27 +468,31 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    const labelTemplate = JSON.parse(saved) as LabelTemplate;
-    this.template.set(labelTemplate);
-    const widthMm = labelTemplate.width || 210;
-    const heightMm = labelTemplate.height || 297;
-    this.canvasState.set({
-      width: millimetersToPixels(widthMm),
-      height: millimetersToPixels(heightMm),
-      backgroundColor: labelTemplate.backgroundColor || '#ffffff',
-      backgroundImage: labelTemplate.backgroundImage
-    });
-    if (labelTemplate.canvasJson) {
-      await this.canvasService.loadPage({
-        id: 'loaded-page',
-        name: 'Loaded Page',
-        widthMm,
-        heightMm,
+    try {
+      const labelTemplate = JSON.parse(saved) as LabelTemplate;
+      this.template.set(labelTemplate);
+      const widthMm = labelTemplate.width || 210;
+      const heightMm = labelTemplate.height || 297;
+      this.canvasState.set({
+        width: millimetersToPixels(widthMm),
+        height: millimetersToPixels(heightMm),
         backgroundColor: labelTemplate.backgroundColor || '#ffffff',
-        backgroundImage: labelTemplate.backgroundImage,
-        canvasState: this.canvasState(),
-        canvasJson: labelTemplate.canvasJson
+        backgroundImage: labelTemplate.backgroundImage
       });
+      if (labelTemplate.canvasJson) {
+        await this.canvasService.loadPage({
+          id: 'loaded-page',
+          name: 'Loaded Page',
+          widthMm,
+          heightMm,
+          backgroundColor: labelTemplate.backgroundColor || '#ffffff',
+          backgroundImage: labelTemplate.backgroundImage,
+          canvasState: this.canvasState(),
+          canvasJson: labelTemplate.canvasJson
+        });
+      }
+    } catch (e) {
+      console.error('Failed to load canvas from JSON:', e);
     }
   }
 
