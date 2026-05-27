@@ -7,7 +7,8 @@ import {
   Line,
   Pattern,
   Rect,
-  Triangle
+  Triangle,
+  util as fabricUtil
 } from 'fabric';
 import {
   BarcodeElement,
@@ -216,49 +217,109 @@ export class EditorCanvasService {
     return shape;
   }
 
-  addQRCode(value?: string): QRCodeElement {
-    const size = 100;
+  addQRCode(bindingValue?: string): QRCodeElement {
+    if (!this.canvas) {
+      throw new Error('Canvas not initialized');
+    }
+
+    const previewValue = bindingValue || '${qrcode}';
     const qrElement: QRCodeElement = {
       type: 'qrcode',
       id: this.randomId(),
-      x: 24,
-      y: 24,
-      width: size,
-      height: size,
-      value,
+      x: 50,
+      y: 50,
+      width: 100,
+      height: 100,
+      value: previewValue,
       errorCorrectionLevel: 'M',
       foregroundColor: '#000000',
       backgroundColor: '#ffffff'
     };
 
-    // For now, create as rect placeholder - actual QR generation would need a library
-    const fabricShape = this.createFabricShape(qrElement);
-    this.extend(fabricShape, qrElement.id);
-    this.elementRegistry.set(qrElement.id, qrElement);
-    this.canvas?.add(fabricShape);
-    this.selectItemAfterAdded(fabricShape);
+    // Use FabricImage with custom properties for barcode/qrcode
+    const qrDataUrl = this.generateQRCodeDataUrl(previewValue, 100);
+
+    FabricImage.fromURL(qrDataUrl).then((img) => {
+      img.set({
+        left: qrElement.x,
+        top: qrElement.y,
+        scaleX: 1,
+        scaleY: 1
+      });
+
+      // Set custom properties for barcode/qrcode
+      (img as any).elementType = 'qrcode';
+      (img as any).bindingValue = previewValue;
+      (img as any).errorCorrectionLevel = 'M';
+      (img as any).foregroundColor = '#000000';
+      (img as any).backgroundColor = '#ffffff';
+
+      // Extend toObject to persist these properties
+      this.extendWithBarcodeProperties(img, {
+        elementType: 'qrcode',
+        bindingValue: previewValue,
+        errorCorrectionLevel: 'M',
+        foregroundColor: '#000000',
+        backgroundColor: '#ffffff'
+      });
+
+      this.extend(img, qrElement.id);
+      this.elementRegistry.set(qrElement.id, qrElement);
+      this.canvas!.add(img);
+      this.selectItemAfterAdded(img);
+    });
 
     return qrElement;
   }
 
-  addBarcode(format: BarcodeElement['format'], value?: string): BarcodeElement {
+  addBarcode(format: BarcodeElement['format'], bindingValue?: string): BarcodeElement {
+    if (!this.canvas) {
+      throw new Error('Canvas not initialized');
+    }
+
+    const previewValue = bindingValue || '${barcode}';
     const barcodeElement: BarcodeElement = {
       type: 'barcode',
       id: this.randomId(),
-      x: 24,
-      y: 24,
+      x: 50,
+      y: 50,
       width: 200,
       height: 80,
       format,
-      value,
+      value: previewValue,
       showText: true
     };
 
-    const fabricShape = this.createFabricShape(barcodeElement);
-    this.extend(fabricShape, barcodeElement.id);
-    this.elementRegistry.set(barcodeElement.id, barcodeElement);
-    this.canvas?.add(fabricShape);
-    this.selectItemAfterAdded(fabricShape);
+    // Use FabricImage with custom properties for barcode
+    const barcodeDataUrl = this.generateBarcodeDataUrl(previewValue, format);
+
+    FabricImage.fromURL(barcodeDataUrl).then((img) => {
+      img.set({
+        left: barcodeElement.x,
+        top: barcodeElement.y,
+        scaleX: 1,
+        scaleY: 1
+      });
+
+      // Set custom properties
+      (img as any).elementType = 'barcode';
+      (img as any).bindingValue = previewValue;
+      (img as any).barcodeFormat = format;
+      (img as any).showText = true;
+
+      // Extend toObject
+      this.extendWithBarcodeProperties(img, {
+        elementType: 'barcode',
+        bindingValue: previewValue,
+        barcodeFormat: format,
+        showText: true
+      });
+
+      this.extend(img, barcodeElement.id);
+      this.elementRegistry.set(barcodeElement.id, barcodeElement);
+      this.canvas!.add(img);
+      this.selectItemAfterAdded(img);
+    });
 
     return barcodeElement;
   }
@@ -684,6 +745,14 @@ export class EditorCanvasService {
           color: String(object.get('fill') || '#000000'),
         };
       case 'barcode':
+        // For FabricImage-based barcode, read properties directly from object
+        if (object.type === 'image') {
+          return {
+            ...baseState,
+            barcodeFormat: (object as any).barcodeFormat ?? 'CODE128',
+            showText: (object as any).showText ?? true,
+          };
+        }
         const barcodeEl = this.getObjectElement(object) as BarcodeElement | undefined;
         return {
           ...baseState,
@@ -691,6 +760,15 @@ export class EditorCanvasService {
           showText: barcodeEl?.showText ?? true,
         };
       case 'qrcode':
+        // For FabricImage-based qrcode, read properties directly from object
+        if (object.type === 'image') {
+          return {
+            ...baseState,
+            foregroundColor: (object as any).foregroundColor ?? '#000000',
+            backgroundColor: (object as any).backgroundColor ?? '#ffffff',
+            errorCorrectionLevel: (object as any).errorCorrectionLevel ?? 'M',
+          };
+        }
         const qrEl = this.getObjectElement(object) as QRCodeElement | undefined;
         return {
           ...baseState,
@@ -713,7 +791,13 @@ export class EditorCanvasService {
       return 'shape';
     }
     if (type === 'circle' || type === 'triangle') return 'shape';
-    if (type === 'image') return 'image';
+    if (type === 'image') {
+      // Check for barcode/qrcode custom property
+      const elementType = (object as any).elementType;
+      if (elementType === 'barcode') return 'barcode';
+      if (elementType === 'qrcode') return 'qrcode';
+      return 'image';
+    }
     return 'shape';
   }
 
@@ -1104,6 +1188,55 @@ export class EditorCanvasService {
       ...toObject.call(obj),
       id
     }))(originalToObject);
+  }
+
+  private extendWithBarcodeProperties(obj: any, props: Record<string, any>): void {
+    const originalToObject = obj.toObject;
+    const objRef = obj;
+    obj.toObject = () => {
+      return fabricUtil.object.extend(originalToObject.call(objRef), props);
+    };
+
+    // Set instance properties
+    Object.assign(obj, props);
+  }
+
+  generateQRCodeDataUrl(value: string, size: number): string {
+    try {
+      // Use qrcode library to generate SVG
+      const svg = (window as any).qrcode.generateSVG(value, { width: size });
+      return 'data:image/svg+xml;base64,' + btoa(svg);
+    } catch (e) {
+      console.error('QR code generation failed:', e);
+      return this.createPlaceholderDataUrl('QR', size);
+    }
+  }
+
+  generateBarcodeDataUrl(value: string, format: string): string {
+    try {
+      const canvas = document.createElement('canvas');
+      (window as any).JsBarcode(canvas, value, { format });
+      return canvas.toDataURL('image/png');
+    } catch (e) {
+      console.error('Barcode generation failed:', e);
+      return this.createPlaceholderDataUrl('BC', 200);
+    }
+  }
+
+  private createPlaceholderDataUrl(text: string, size: number): string {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size / 2;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillRect(0, 0, size, size / 2);
+      ctx.fillStyle = '#999';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, size / 2, size / 4);
+    }
+    return canvas.toDataURL('image/png');
   }
 
   private randomId(): string {
