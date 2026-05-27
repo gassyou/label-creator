@@ -518,6 +518,18 @@ export class EditorCanvasService {
     this.canvas.requestRenderAll();
   }
 
+  resizeCanvas(widthMm: number, heightMm: number): void {
+    if (!this.canvas) {
+      return;
+    }
+
+    const widthPx = millimetersToPixels(widthMm);
+    const heightPx = millimetersToPixels(heightMm);
+    this.canvas.setDimensions({ width: widthPx, height: heightPx });
+    this.touchRevision();
+    this.canvas.requestRenderAll();
+  }
+
   applyCanvasImage(backgroundImage: string, onApplied: () => void): void {
     if (!this.canvas || !backgroundImage) {
       return;

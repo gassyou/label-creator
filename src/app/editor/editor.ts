@@ -263,6 +263,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         height: dimensions.height
       }
     }));
+    this.canvasService.resizeCanvas(dimensions.width, dimensions.height);
   }
 
   applyCanvasImage(): void {
