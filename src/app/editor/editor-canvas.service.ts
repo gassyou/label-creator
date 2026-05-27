@@ -7,6 +7,7 @@ import {
   Line,
   Pattern,
   Rect,
+  Textbox,
   Triangle,
   util as fabricUtil
 } from 'fabric';
@@ -60,9 +61,9 @@ export class EditorCanvasService {
     this.canvas.on('selection:updated', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
     this.canvas.on('selection:cleared', () => this.handleSelection(null));
     this.canvas.on('object:added', () => this.touchRevision());
-    this.canvas.on('object:modified', () => this.touchRevision());
+    this.canvas.on('object:modified', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
     this.canvas.on('object:removed', () => this.touchRevision());
-    this.canvas.on('text:changed', () => this.touchRevision());
+    this.canvas.on('text:changed', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
     this.applyInteractionMode();
     this.canvas.requestRenderAll();
     this.jsonPreview.set(JSON.stringify(this.canvas.toJSON(), null, 2));
@@ -94,15 +95,33 @@ export class EditorCanvasService {
     }
 
     const id = this.randomId();
-    const text = new IText(content.trim() || 'Text', {
+    const text = new Textbox(content.trim() || 'Text', {
       left: 24,
       top: 24,
       fontFamily: DEFAULT_SELECTION_STATE.fontFamily,
       fill: '#111827',
       fontSize: DEFAULT_SELECTION_STATE.fontSize,
-      scaleX: 0.5,
-      scaleY: 0.5,
+      width: 200,
+      minWidth: 50,
+      splitByGrapheme: true,
+      textAlign: 'left',
+      whiteSpace: 'normal',
+      originX: 'left',
+      originY: 'top',
       hasRotatingPoint: true
+    });
+
+    // After resizing is complete, convert any scaling to actual dimensions
+    // This prevents text from being stretched when resizing the textbox
+    text.on('modified', () => {
+      const scaleX = text.scaleX || 1;
+      const scaleY = text.scaleY || 1;
+      if (scaleX !== 1 || scaleY !== 1) {
+        const newWidth = scaleX !== 1 ? Math.max(50, (text.width || 50) * scaleX) : text.width;
+        text.set({ width: newWidth, scaleX: 1, scaleY: 1 });
+        text.setCoords();
+        this.canvas?.requestRenderAll();
+      }
     });
 
     this.extend(text, id);
@@ -645,12 +664,36 @@ export class EditorCanvasService {
       this.canvas.forEachObject((object) => {
         const existingId = this.getObjectId(object);
         const id = existingId || `loaded-${Date.now()}-${index++}`;
+
+        // Re-apply barcode/qrcode properties FIRST (before id extension, as it overwrites toObject)
+        const elementType = (object as any).elementType;
+        if (elementType === 'qrcode' || elementType === 'barcode') {
+          this.extendWithBarcodeProperties(object, {
+            elementType,
+            bindingValue: (object as any).bindingValue ?? '',
+            foregroundColor: (object as any).foregroundColor ?? '#000000',
+            backgroundColor: (object as any).backgroundColor ?? '#ffffff',
+            errorCorrectionLevel: (object as any).errorCorrectionLevel ?? 'M',
+            barcodeFormat: (object as any).barcodeFormat ?? 'CODE128',
+            showText: (object as any).showText ?? true
+          });
+        }
+
+        // Then apply id extension (preserves id in toObject)
         if (!existingId) {
           this.extend(object, id);
+        } else {
+          // Re-apply toObject extension for loaded objects (since loadFromJSON recreates objects)
+          const originalToObject = object.toObject;
+          object.toObject = () => ({
+            ...originalToObject.call(object),
+            id
+          });
         }
+
         // Create basic element model for registry
-        const elementType = this.getElementType(object);
-        const element = this.createElementModel(object, elementType);
+        const objType = this.getElementType(object);
+        const element = this.createElementModel(object, objType);
         this.elementRegistry.set(id, element);
       });
     }
@@ -709,6 +752,10 @@ export class EditorCanvasService {
     ].filter(Boolean);
 
     const objectType = this.getElementType(object);
+    const fabricObj = object as any;
+    const effectiveFontSize = objectType === 'text'
+      ? Math.round(((fabricObj as any).fontSize || DEFAULT_SELECTION_STATE.fontSize) * ((fabricObj as any).scaleX || 1))
+      : Number(this.getActiveStyle('fontSize') || DEFAULT_SELECTION_STATE.fontSize);
     const baseState = {
       id: this.getObjectId(object),
       type: objectType,
@@ -716,7 +763,7 @@ export class EditorCanvasService {
       fill: String(this.getActiveStyle('fill') || DEFAULT_SELECTION_STATE.fill),
       stroke: String(object.get('stroke') || ''),
       strokeWidth: Number(object.get('strokeWidth') || 0),
-      fontSize: Number(this.getActiveStyle('fontSize') || DEFAULT_SELECTION_STATE.fontSize),
+      fontSize: effectiveFontSize,
       lineHeight: Number(this.getActiveStyle('lineHeight') || DEFAULT_SELECTION_STATE.lineHeight),
       charSpacing: Number(this.getActiveStyle('charSpacing') || DEFAULT_SELECTION_STATE.charSpacing),
       fontWeight: String(this.getActiveStyle('fontWeight') || ''),
@@ -733,6 +780,7 @@ export class EditorCanvasService {
           ...baseState,
           text: (object as IText).text ?? '',
           color: String(object.get('fill') || '#000000'),
+          originY: String(object.get('originY') || 'top'),
         };
       case 'barcode':
         // For FabricImage-based barcode, read properties directly from object
@@ -754,6 +802,7 @@ export class EditorCanvasService {
         if (object.type === 'image') {
           return {
             ...baseState,
+            text: (object as any).bindingValue ?? '',
             foregroundColor: (object as any).foregroundColor ?? '#000000',
             backgroundColor: (object as any).backgroundColor ?? '#ffffff',
             errorCorrectionLevel: (object as any).errorCorrectionLevel ?? 'M',
@@ -762,8 +811,10 @@ export class EditorCanvasService {
         const qrEl = this.getObjectElement(object) as QRCodeElement | undefined;
         return {
           ...baseState,
+          text: qrEl?.value ?? '',
           foregroundColor: qrEl?.foregroundColor ?? '#000000',
           backgroundColor: qrEl?.backgroundColor ?? '#ffffff',
+          errorCorrectionLevel: qrEl?.errorCorrectionLevel ?? 'M',
         };
       default:
         return baseState;
@@ -826,7 +877,13 @@ export class EditorCanvasService {
   }
 
   setSelectionFontSize(fontSize: number): void {
-    this.setActiveStyle('fontSize', Number(fontSize));
+    const object = this.canvas?.getActiveObject();
+    if (!object) return;
+
+    // Reset scaleX/scaleY when changing font size directly
+    object.set({ fontSize: Number(fontSize), scaleX: 1, scaleY: 1 });
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
   }
 
   setSelectionFontWeight(fontWeight: string): void {
@@ -847,6 +904,10 @@ export class EditorCanvasService {
 
   setSelectionTextAlign(textAlign: string): void {
     this.setActiveProp('textAlign', textAlign);
+  }
+
+  setSelectionVerticalTextAlign(verticalAlign: string): void {
+    this.setActiveProp('originY', verticalAlign);
   }
 
   setSelectionFontFamily(fontFamily: string): void {
@@ -873,19 +934,28 @@ export class EditorCanvasService {
     this.setActiveStyle('fill', color);
   }
 
-  updateBarcodeProperties(format: string, showText: boolean): void {
+  updateBarcodeProperties(format: string, showText: boolean, bindingValue?: string): void {
     const object = this.canvas?.getActiveObject();
     if (!object) return;
     const element = this.getObjectElement(object) as BarcodeElement | undefined;
     if (element) {
       element.format = format as BarcodeElement['format'];
       element.showText = showText;
+      if (bindingValue !== undefined) {
+        element.value = bindingValue;
+      }
+    }
+    // Also update the Fabric object properties directly for serialization
+    (object as any).barcodeFormat = format;
+    (object as any).showText = showText;
+    if (bindingValue !== undefined) {
+      (object as any).bindingValue = bindingValue;
     }
     this.canvas?.requestRenderAll();
     this.touchRevision();
   }
 
-  updateQRCodeProperties(foregroundColor: string, backgroundColor: string, errorCorrectionLevel: string): void {
+  updateQRCodeProperties(foregroundColor: string, backgroundColor: string, errorCorrectionLevel: string, bindingValue?: string): void {
     const object = this.canvas?.getActiveObject();
     if (!object) return;
     const element = this.getObjectElement(object) as QRCodeElement | undefined;
@@ -893,6 +963,16 @@ export class EditorCanvasService {
       element.foregroundColor = foregroundColor;
       element.backgroundColor = backgroundColor;
       element.errorCorrectionLevel = errorCorrectionLevel as QRCodeElement['errorCorrectionLevel'];
+      if (bindingValue !== undefined) {
+        element.value = bindingValue;
+      }
+    }
+    // Also update the Fabric object properties directly for serialization
+    (object as any).foregroundColor = foregroundColor;
+    (object as any).backgroundColor = backgroundColor;
+    (object as any).errorCorrectionLevel = errorCorrectionLevel;
+    if (bindingValue !== undefined) {
+      (object as any).bindingValue = bindingValue;
     }
     this.canvas?.requestRenderAll();
     this.touchRevision();
@@ -1105,6 +1185,15 @@ export class EditorCanvasService {
     return !!this.canvas?.getActiveObject();
   }
 
+  isEditingText(): boolean {
+    const activeObject = this.canvas?.getActiveObject();
+    if (!activeObject) {
+      return false;
+    }
+    // Check if the object is a text-based object that is currently being edited
+    return (activeObject as any).isEditing === true;
+  }
+
   // ============================================================
   // Element Registry
   // ============================================================
@@ -1122,7 +1211,6 @@ export class EditorCanvasService {
   // ============================================================
 
   private handleSelection(object: any): void {
-    console.log('[handleSelection] object:', object?.type, object?.type === 'activeSelection' ? '(MULTI)' : '');
     if (!object) {
       this.selected.set(null);
       this.textEditorVisible.set(false);
@@ -1210,14 +1298,23 @@ export class EditorCanvasService {
   }
 
   private extendWithBarcodeProperties(obj: any, props: Record<string, any>): void {
-    // Custom properties are now typed in fabric.custom.d.ts
-    // Just assign them directly - Fabric handles serialization via toObject override
+    // Assign properties directly to the object
     Object.assign(obj, props);
 
+    // Override toObject to include custom properties in serialization
     const originalToObject = obj.toObject;
     obj.toObject = function(this: any) {
       const result = originalToObject.call(this);
-      return { ...result, ...props };
+      return {
+        ...result,
+        elementType: this.elementType,
+        bindingValue: this.bindingValue,
+        errorCorrectionLevel: this.errorCorrectionLevel,
+        foregroundColor: this.foregroundColor,
+        backgroundColor: this.backgroundColor,
+        barcodeFormat: this.barcodeFormat,
+        showText: this.showText
+      };
     };
   }
 
@@ -1409,7 +1506,8 @@ export class EditorCanvasService {
       rotation: object.angle ?? 0,
       opacity: object.opacity ?? 1,
       visible: object.visible ?? true,
-      lock: !object.selectable
+      lock: !object.selectable,
+      bindingValue: (object as any).bindingValue ?? ''
     };
 
     switch (type) {
@@ -1443,6 +1541,23 @@ export class EditorCanvasService {
           stroke: object.stroke ?? '#000000',
           strokeWidth: object.strokeWidth ?? 1
         } as LineElement;
+      case 'qrcode':
+        return {
+          ...base,
+          type: 'qrcode' as const,
+          value: object.bindingValue ?? '',
+          errorCorrectionLevel: object.errorCorrectionLevel ?? 'M',
+          foregroundColor: object.foregroundColor ?? '#000000',
+          backgroundColor: object.backgroundColor ?? '#ffffff'
+        } as QRCodeElement;
+      case 'barcode':
+        return {
+          ...base,
+          type: 'barcode' as const,
+          format: object.barcodeFormat ?? 'CODE128',
+          value: object.bindingValue ?? '',
+          showText: object.showText ?? true
+        } as BarcodeElement;
       default:
         return base as LabelElement;
     }

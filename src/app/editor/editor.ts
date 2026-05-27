@@ -154,6 +154,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     if (modifier && event.key === 'v') {
+      // 如果用户正在编辑文本框内的内容，让 Fabric.js 处理粘贴
+      if (this.canvasService.isEditingText()) {
+        return;
+      }
       event.preventDefault();
       this.canvasService.pasteClipboard();
       return;
@@ -304,16 +308,32 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   updateSelectionText(text: string): void {
     this.selectionState.update((state) => ({ ...state, text }));
+    // If it's a barcode or QR code, also update the binding value
+    if (this.selectionState().type === 'barcode' || this.selectionState().type === 'qrcode') {
+      this.canvasService.updateBarcodeProperties(
+        this.selectionState().barcodeFormat ?? 'CODE128',
+        this.selectionState().showText ?? true,
+        text
+      );
+    }
   }
 
   updateBarcodeFormat(format: string): void {
     this.selectionState.update((state) => ({ ...state, barcodeFormat: format as any }));
-    this.canvasService.updateBarcodeProperties(format, this.selectionState().showText ?? true);
+    this.canvasService.updateBarcodeProperties(
+      format,
+      this.selectionState().showText ?? true,
+      this.selectionState().text ?? ''
+    );
   }
 
   updateBarcodeShowText(showText: boolean): void {
     this.selectionState.update((state) => ({ ...state, showText }));
-    this.canvasService.updateBarcodeProperties(this.selectionState().barcodeFormat ?? 'CODE128', showText);
+    this.canvasService.updateBarcodeProperties(
+      this.selectionState().barcodeFormat ?? 'CODE128',
+      showText,
+      this.selectionState().text ?? ''
+    );
   }
 
   updateErrorCorrectionLevel(level: string): void {
@@ -321,7 +341,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.canvasService.updateQRCodeProperties(
       this.selectionState().foregroundColor ?? '#000000',
       this.selectionState().backgroundColor ?? '#ffffff',
-      level
+      level,
+      this.selectionState().text ?? ''
     );
   }
 
@@ -330,7 +351,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.canvasService.updateQRCodeProperties(
       color,
       this.selectionState().backgroundColor ?? '#ffffff',
-      this.selectionState().errorCorrectionLevel ?? 'M'
+      this.selectionState().errorCorrectionLevel ?? 'M',
+      this.selectionState().text ?? ''
     );
   }
 
@@ -339,7 +361,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.canvasService.updateQRCodeProperties(
       this.selectionState().foregroundColor ?? '#000000',
       color,
-      this.selectionState().errorCorrectionLevel ?? 'M'
+      this.selectionState().errorCorrectionLevel ?? 'M',
+      this.selectionState().text ?? ''
     );
   }
 
@@ -363,6 +386,11 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   updateSelectionTextAlign(textAlign: string): void {
     this.selectionState.update((state) => ({ ...state, textAlign }));
     this.canvasService.setSelectionTextAlign(textAlign);
+  }
+
+  updateSelectionVerticalAlign(verticalAlign: string): void {
+    this.selectionState.update((state) => ({ ...state, originY: verticalAlign }));
+    this.canvasService.setSelectionVerticalTextAlign(verticalAlign);
   }
 
   toggleBold(): void {
@@ -462,7 +490,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         }
         this.templateName.set(template.name || '未命名');
         const labelTemplate = template as unknown as LabelTemplate;
-        this.template.set(labelTemplate);
+        // Ensure printSetting has default values for missing properties
+        const printSetting = {
+          ...DEFAULT_PRINT_SETTING,
+          ...labelTemplate.printSetting
+        };
+        this.template.set({ ...labelTemplate, printSetting });
         if (labelTemplate.label?.canvasJson) {
           await this.canvasService.loadPage(labelTemplate.label);
         }
@@ -503,7 +536,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const labelTemplate = JSON.parse(saved) as LabelTemplate;
-      this.template.set(labelTemplate);
+      // Ensure printSetting has default values for missing properties
+      const printSetting = {
+        ...DEFAULT_PRINT_SETTING,
+        ...labelTemplate.printSetting
+      };
+      this.template.set({ ...labelTemplate, printSetting });
       if (labelTemplate.label.canvasJson) {
         await this.canvasService.loadPage(labelTemplate.label);
       }

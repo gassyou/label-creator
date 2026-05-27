@@ -232,6 +232,83 @@ button.secondary.active,
   }
 }
 
+.text-style-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+
+  button.icon-button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #1f2937;
+    cursor: pointer;
+    transition: all 150ms ease;
+
+    span[nz-icon] {
+      font-size: 16px;
+    }
+
+    &:hover:not(.active) {
+      background: #e5e7eb;
+    }
+
+    &.active {
+      background: #eff6ff;
+      color: #2563eb;
+      border-color: #bfdbfe;
+    }
+  }
+}
+
+.text-align-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+
+  .align-label {
+    font-size: 0.75rem;
+    color: #4b5563;
+    min-width: 60px;
+  }
+
+  button.icon-button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #1f2937;
+    cursor: pointer;
+    transition: all 150ms ease;
+
+    span[nz-icon] {
+      font-size: 16px;
+    }
+
+    &:hover:not(.active) {
+      background: #e5e7eb;
+    }
+
+    &.active {
+      background: #eff6ff;
+      color: #2563eb;
+      border-color: #bfdbfe;
+    }
+  }
+}
+
 .json-panel pre {
   margin: 0;
   overflow: auto;

@@ -1,12 +1,8 @@
 <aside class="right-rail">
   <section class="rail-panel">
-    <h2>Canvas</h2>
-    <p class="muted">
-      Canvas raster size: {{ canvasState().width }} × {{ canvasState().height }} px
-    </p>
+    <h2>标签属性</h2>
     <label>
-      <span>Page Size</span>
-      <select [ngModel]="pageSize()" (ngModelChange)="onPageSizeChange($event)">
+      <select title="标签大小" [ngModel]="pageSize()" (ngModelChange)="onPageSizeChange($event)">
         <option value="a4-portrait">A4 Portrait (210×297 mm)</option>
         <option value="a4-landscape">A4 Landscape (297×210 mm)</option>
         <option value="a5-portrait">A5 Portrait (148×210 mm)</option>
@@ -59,7 +55,6 @@
         <nz-upload
           [nzShowUploadList]="false"
           [nzBeforeUpload]="beforeUpload.bind(this)"
-          [nzDisabled]="!!canvasState().backgroundImage"
         >
           <button nz-button nzType="primary" nzSize="small" type="button">
             <span nz-icon nzType="upload"></span>
@@ -76,7 +71,7 @@
   </section>
 
   <section class="rail-panel">
-    <h2>Selection</h2>
+    <h2>元素属性</h2>
     @if (!propsPanelVisible()) {
       <p class="muted">Select an object on the canvas to edit its properties.</p>
     }
@@ -102,8 +97,8 @@
           />
         </label>
 
-        <!-- Fill - shown for shapes, text, barcode, qrcode -->
-        @if (selectionState().type !== 'line') {
+        <!-- Fill - shown for shapes only -->
+        @if (selectionState().type === 'shape') {
           <label>
             <span>Fill</span>
             <div class="color-input-row">
@@ -161,14 +156,6 @@
         <!-- Text Properties -->
         @if (textEditorVisible()) {
           <label>
-            <span>Text</span>
-            <input
-              type="text"
-              [ngModel]="selectionState().text"
-              (ngModelChange)="textChanged.emit($event)"
-            />
-          </label>
-          <label>
             <span>Color</span>
             <div class="color-input-row">
               <label class="checkbox-label">
@@ -187,6 +174,7 @@
               />
             </div>
           </label>
+
           <label>
             <span>Font Family</span>
             <select
@@ -213,6 +201,63 @@
               (ngModelChange)="fontSizeChanged.emit($event)"
             />
           </label>
+
+          <div class="text-style-row">
+            <button
+              type="button"
+              class="icon-button"
+              [class.active]="selectionState().fontWeight === 'bold'"
+              (click)="boldToggled.emit()"
+              title="Bold"
+            >
+              <span nz-icon nzType="bold" nzTheme="outline"></span>
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              [class.active]="selectionState().fontStyle === 'italic'"
+              (click)="italicToggled.emit()"
+              title="Italic"
+            >
+              <span nz-icon nzType="italic" nzTheme="outline"></span>
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              [class.active]="selectionState().textDecoration?.includes('underline')"
+              (click)="textDecorationToggled.emit('underline')"
+              title="Underline"
+            >
+              <span nz-icon nzType="underline" nzTheme="outline"></span>
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              [class.active]="selectionState().textAlign === 'left'"
+              (click)="textAlignChanged.emit('left')"
+              title="Align Left"
+            >
+              <span nz-icon nzType="align-left" nzTheme="outline"></span>
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              [class.active]="selectionState().textAlign === 'center'"
+              (click)="textAlignChanged.emit('center')"
+              title="Align Center"
+            >
+              <span nz-icon nzType="align-center" nzTheme="outline"></span>
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              [class.active]="selectionState().textAlign === 'right'"
+              (click)="textAlignChanged.emit('right')"
+              title="Align Right"
+            >
+              <span nz-icon nzType="align-right" nzTheme="outline"></span>
+            </button>
+          </div>
         }
 
         <!-- Barcode Properties -->
@@ -313,7 +358,7 @@
   </section>
 
   <section class="rail-panel json-panel">
-    <h2>Canvas JSON</h2>
+    <h2>标签数据</h2>
     <pre>{{ jsonPreview() }}</pre>
   </section>
 </aside>

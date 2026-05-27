@@ -71,6 +71,8 @@
       (errorCorrectionLevelChanged)="updateErrorCorrectionLevel($event)"
       (foregroundColorChanged)="updateForegroundColor($event)"
       (backgroundColorChanged)="updateBackgroundColor($event)"
+      (textAlignChanged)="updateSelectionTextAlign($event)"
+      (verticalAlignChanged)="updateSelectionVerticalAlign($event)"
     />
 
     @if (printSettingVisible()) {

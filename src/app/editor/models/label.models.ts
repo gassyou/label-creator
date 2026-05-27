@@ -20,6 +20,8 @@ export interface PrintSetting {
 export const DEFAULT_PRINT_SETTING: PrintSetting = {
   paperSize: 'A4',
   orientation: 'portrait',
+  customPaperWidth: 210,
+  customPaperHeight: 297,
   marginTop: 0,
   marginBottom: 0,
   marginLeft: 0,

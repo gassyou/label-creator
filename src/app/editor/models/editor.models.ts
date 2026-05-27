@@ -24,6 +24,7 @@ export type EditorSelectionState = {
   errorCorrectionLevel?: string;
   foregroundColor?: string;
   backgroundColor?: string;
+  originY?: string;
 };
 
 export const DEFAULT_SELECTION_STATE: EditorSelectionState = {

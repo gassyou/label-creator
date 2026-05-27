@@ -50,6 +50,8 @@ export class EditorPropertiesPanelComponent {
   readonly errorCorrectionLevelChanged = output<string>();
   readonly foregroundColorChanged = output<string>();
   readonly backgroundColorChanged = output<string>();
+  readonly textAlignChanged = output<string>();
+  readonly verticalAlignChanged = output<string>();
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
   readonly pageSize = signal('a4-portrait');
@@ -89,6 +91,11 @@ export class EditorPropertiesPanelComponent {
     };
     reader.readAsDataURL(file as unknown as File);
     return false;
+  }
+
+  getVerticalAlign(): string {
+    const originY = this.selectionState().originY;
+    return originY || 'top';
   }
 
   handleImageUpload(): void {
