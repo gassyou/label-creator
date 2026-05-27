@@ -218,7 +218,11 @@ async function generateQRCodeSVG(
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
-    await (QRCode as any).toCanvas(canvas, value, { width: size });
+    await (QRCode as any).toCanvas(canvas, value, {
+      width: size,
+      margin: 0,
+      color: { dark: '#000000', light: '#ffffff' }
+    });
     return canvas.toDataURL('image/png');
   } catch (e) {
     console.error('QR code generation failed:', e);

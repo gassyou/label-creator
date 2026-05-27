@@ -102,14 +102,19 @@ export class PdfLabelGenerator implements LabelGenerator {
   }
 
   private async renderLabelToPng(label: Label, multiplier: number): Promise<string> {
-    const element = document.createElement('canvas');
-    const canvas = new Canvas(element, {
-      selection: false,
-      renderOnAddRemove: false
-    });
-
     const widthPx = millimetersToPixels(label.width);
     const heightPx = millimetersToPixels(label.height);
+
+    const element = document.createElement('canvas');
+    element.width = widthPx * multiplier;
+    element.height = heightPx * multiplier;
+
+    const canvas = new Canvas(element, {
+      selection: false,
+      renderOnAddRemove: false,
+      width: widthPx,
+      height: heightPx
+    });
 
     canvas.setDimensions({ width: widthPx, height: heightPx });
     canvas.backgroundColor = label.backgroundColor;
@@ -129,6 +134,7 @@ export class PdfLabelGenerator implements LabelGenerator {
 
     if (label.canvasJson) {
       await canvas.loadFromJSON(label.canvasJson);
+      canvas.setDimensions({ width: widthPx, height: heightPx });
     }
 
     canvas.requestRenderAll();
