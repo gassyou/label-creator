@@ -64,7 +64,37 @@ export class PdfLabelGenerator implements LabelGenerator {
   }
 
   async generateSingle(label: Label, options?: PdfGenerateOptions): Promise<Blob> {
-    return this.generate([label], options);
+    if (!label) {
+      throw new Error('No label to generate');
+    }
+
+    const { jsPDF } = await import('jspdf');
+    const multiplier = options?.multiplier ?? 2;
+
+    const orientation = this.getOrientation(options?.orientation, label.width, label.height);
+
+    // 直接使用标签的宽高作为 PDF 页面大小
+    const pdf = new jsPDF({
+      orientation,
+      unit: 'mm',
+      format: [label.width, label.height]
+    });
+
+    // 渲染标签为 PNG 并添加到 PDF（居中填充整个页面）
+    const pageImage = await this.renderLabelToPng(label, multiplier);
+
+    pdf.addImage(
+      pageImage,
+      'PNG',
+      0,
+      0,
+      label.width,
+      label.height,
+      `label-single`,
+      'FAST'
+    );
+
+    return pdf.output('blob');
   }
 
   private async renderLabelToPng(label: Label, multiplier: number): Promise<string> {

@@ -1,6 +1,7 @@
-import { Label, millimetersToPixels } from '../../editor/models/label.models';
+import { Label, PrintSetting, millimetersToPixels } from '../../editor/models/label.models';
 import { Canvas } from 'fabric';
 import { LabelGenerator, PngGenerateOptions } from './label-generator.interface';
+import { PrintLayoutCalculator } from './print-layout-calculator';
 
 /**
  * PNG 标签生成器
@@ -8,29 +9,45 @@ import { LabelGenerator, PngGenerateOptions } from './label-generator.interface'
 export class PngLabelGenerator implements LabelGenerator {
   readonly name = 'png';
 
+  constructor(private printSetting: PrintSetting) {}
+
   async generate(labels: Label[], options?: PngGenerateOptions): Promise<Blob> {
     if (!labels.length) {
       throw new Error('No labels to generate');
     }
 
-    // PNG 生成器生成所有标签到单个合并画布
-    const totalWidth = labels.reduce((sum, l) => sum + millimetersToPixels(l.width), 0);
-    const maxHeight = Math.max(...labels.map(l => millimetersToPixels(l.height)));
+    const multiplier = options?.multiplier ?? 2;
+
+    // 计算排版
+    const layout = PrintLayoutCalculator.calculate(
+      this.printSetting,
+      labels[0].width,
+      labels[0].height
+    );
+
+    const pageCount = PrintLayoutCalculator.getPageCount(labels.length, layout);
+
+    // 创建合并画布：所有页面纵向平铺
+    const totalWidth = layout.paperWidth;
+    const totalHeight = layout.paperHeight * pageCount;
 
     const element = document.createElement('canvas');
-    element.width = totalWidth;
-    element.height = maxHeight;
+    element.width = millimetersToPixels(totalWidth);
+    element.height = millimetersToPixels(totalHeight);
 
     const ctx = element.getContext('2d')!;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, totalWidth, maxHeight);
+    ctx.fillRect(0, 0, element.width, element.height);
 
-    let offsetX = 0;
-    for (const label of labels) {
-      const pngData = await this.renderLabelToPng(label, options?.multiplier ?? 2);
-      const img = await this.loadImage(pngData);
-      ctx.drawImage(img, offsetX, 0);
-      offsetX += img.width;
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+      const pageLabels = this.getPageLabels(pageIndex, labels, layout);
+      const pageOffsetY = millimetersToPixels(layout.paperHeight * pageIndex);
+
+      for (const label of pageLabels) {
+        const pageImage = await this.renderLabelToPng(label, multiplier);
+        const img = await this.loadImage(pageImage);
+        ctx.drawImage(img, 0, pageOffsetY);
+      }
     }
 
     return this.canvasToBlob(element);
@@ -40,6 +57,24 @@ export class PngLabelGenerator implements LabelGenerator {
     const pngData = await this.renderLabelToPng(label, options?.multiplier ?? 2);
     const img = await this.loadImage(pngData);
 
+    const targetMax = options?.thumbnailMaxDimension ?? 200;
+    const isThumbnail = options?.thumbnail ?? false;
+
+    if (isThumbnail) {
+      // 计算等比缩放
+      const scale = Math.min(targetMax / img.width, targetMax / img.height);
+      const newWidth = Math.round(img.width * scale);
+      const newHeight = Math.round(img.height * scale);
+
+      const element = document.createElement('canvas');
+      element.width = newWidth;
+      element.height = newHeight;
+      const ctx = element.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, newWidth, newHeight);
+
+      return this.canvasToBlob(element);
+    }
+
     const element = document.createElement('canvas');
     element.width = img.width;
     element.height = img.height;
@@ -47,6 +82,12 @@ export class PngLabelGenerator implements LabelGenerator {
     ctx.drawImage(img, 0, 0);
 
     return this.canvasToBlob(element);
+  }
+
+  private getPageLabels(pageIndex: number, labels: Label[], layout: ReturnType<typeof PrintLayoutCalculator.calculate>): Label[] {
+    const start = pageIndex * layout.labelsPerPage;
+    const end = start + layout.labelsPerPage;
+    return labels.slice(start, end);
   }
 
   private async renderLabelToPng(label: Label, multiplier: number): Promise<string> {

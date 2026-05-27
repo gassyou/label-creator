@@ -27,12 +27,12 @@ export class LabelGeneratorService {
         return this.pdfGenerator;
       case 'png':
         if (!this.pngGenerator) {
-          this.pngGenerator = new PngLabelGenerator();
+          this.pngGenerator = new PngLabelGenerator(printSetting);
         }
         return this.pngGenerator;
       case 'svg':
         if (!this.svgGenerator) {
-          this.svgGenerator = new SvgLabelGenerator();
+          this.svgGenerator = new SvgLabelGenerator(printSetting);
         }
         return this.svgGenerator;
     }
@@ -48,10 +48,12 @@ export class LabelGeneratorService {
 
   /**
    * 生成单个 PNG（不进行排版布局，直接生成标签本身）
+   * @param label 标签数据
+   * @param options 生成选项，支持 thumbnail 模式
    */
-  async generateSinglePng(label: Label, multiplier = 2): Promise<Blob> {
+  async generateSinglePng(label: Label, options?: PngGenerateOptions): Promise<Blob> {
     const generator = this.getGenerator('png', DEFAULT_PRINT_SETTING);
-    return generator.generateSingle(label, { multiplier }) as Promise<Blob>;
+    return generator.generateSingle(label, options) as Promise<Blob>;
   }
 
   /**
