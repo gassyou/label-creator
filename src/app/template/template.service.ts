@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, from, map, switchMap } from 'rxjs';
 import { Canvas } from 'fabric';
-import { StoredTemplate, TemplateStorageService } from './template.storage';
-import { LabelTemplate } from '../editor/models/template.models';
+import { TemplateStorageService } from './template.storage';
+import { Label, LabelTemplate } from '../editor/models';
 
 /**
  * 模板服务
@@ -15,14 +15,14 @@ export class TemplateService {
   /**
    * 获取所有模板
    */
-  getTemplates(): Observable<StoredTemplate[]> {
+  getTemplates(): Observable<LabelTemplate[]> {
     return this.storage.getAll();
   }
 
   /**
    * 根据ID获取模板
    */
-  getTemplate(id: string): Observable<StoredTemplate | null> {
+  getTemplate(id: string): Observable<LabelTemplate | null> {
     return this.storage.getById(id);
   }
 
@@ -38,20 +38,16 @@ export class TemplateService {
     template: LabelTemplate,
     thumbnail?: string,
     id?: string
-  ): Observable<StoredTemplate> {
+  ): Observable<LabelTemplate> {
     const now = new Date().toISOString();
     const templateId = id || `tpl-${Date.now()}`;
 
-    return from(this.generateThumbnailAsync(template)).pipe(
+    return from(this.generateThumbnailAsync(template.label)).pipe(
       map(generatedThumbnail => {
-        const storedTemplate: StoredTemplate = {
+        const storedTemplate: LabelTemplate = {
           id: templateId,
           name,
-          width: template.width,
-          height: template.height,
-          backgroundColor: template.backgroundColor,
-          backgroundImage: template.backgroundImage,
-          canvasJson: template.canvasJson,
+          label:template.label,
           printSetting: template.printSetting,
           thumbnail: thumbnail || generatedThumbnail,
           createdAt: now,
@@ -81,23 +77,15 @@ export class TemplateService {
   }
 
   /**
-   * 生成缩略图
-   * 从模板生成 200x200 的 base64 PNG
-   */
-  generateThumbnail(template: LabelTemplate): Observable<string> {
-    return from(this.generateThumbnailAsync(template));
-  }
-
-  /**
    * 异步生成缩略图
    */
-  private async generateThumbnailAsync(template: LabelTemplate): Promise<string> {
-    if (!template.canvasJson) {
+  private async generateThumbnailAsync(label: Label): Promise<string> {
+    if (!label.canvasJson) {
       return '';
     }
 
     try {
-      return await this.renderCanvasToThumbnail(template);
+      return await this.renderCanvasToThumbnail(label);
     } catch (error) {
       console.error('Failed to generate thumbnail:', error);
       return '';
@@ -107,7 +95,7 @@ export class TemplateService {
   /**
    * 渲染 Canvas 到缩略图
    */
-  private async renderCanvasToThumbnail(template: LabelTemplate): Promise<string> {
+  private async renderCanvasToThumbnail(label: Label): Promise<string> {
     return new Promise((resolve, reject) => {
       const canvasElement = document.createElement('canvas');
 
@@ -125,12 +113,12 @@ export class TemplateService {
 
       // 设置原始尺寸
       canvas.setDimensions({
-        width: template.width,
-        height: template.height
+        width: label.width,
+        height: label.height
       });
 
       // 设置背景
-      const bgImage = template.backgroundImage;
+      const bgImage = label.backgroundImage;
       if (bgImage) {
         // 异步加载背景图
         import('fabric').then(({ FabricImage, Pattern }) => {
@@ -140,14 +128,14 @@ export class TemplateService {
               repeat: 'repeat'
             });
             canvas.backgroundColor = pattern;
-            this.loadAndRender(canvas, template.canvasJson!, thumbWidth, thumbHeight)
+            this.loadAndRender(canvas, label.canvasJson!, thumbWidth, thumbHeight)
               .then(resolve)
               .catch(reject);
           }).catch(reject);
         }).catch(reject);
       } else {
-        canvas.backgroundColor = template.backgroundColor;
-        this.loadAndRender(canvas, template.canvasJson!, thumbWidth, thumbHeight)
+        canvas.backgroundColor = label.backgroundColor;
+        this.loadAndRender(canvas, label.canvasJson!, thumbWidth, thumbHeight)
           .then(resolve)
           .catch(reject);
       }

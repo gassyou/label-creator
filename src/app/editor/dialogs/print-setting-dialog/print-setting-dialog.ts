@@ -7,7 +7,7 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { Component, input, output } from '@angular/core';
-import { PrintSetting, PAPER_SIZES, DEFAULT_PRINT_SETTING } from '../../models/label.models';
+import { PrintSetting } from '../../models/label.models';
 
 @Component({
   selector: 'app-print-setting-dialog',
@@ -22,7 +22,7 @@ export class PrintSettingDialogComponent {
 
   readonly visible = input(true);
 
-  static readonly paperSizes = [
+  readonly paperSizes = [
     { value: 'A4', label: 'A4 (210 x 297 mm)' },
     { value: 'A5', label: 'A5 (148 x 210 mm)' },
     { value: 'letter', label: 'Letter (216 x 279 mm)' },

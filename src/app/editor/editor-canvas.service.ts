@@ -4,24 +4,13 @@ import {
   Circle,
   FabricImage,
   IText,
-  Line,
   Pattern,
   Rect,
   Triangle,
   util as fabricUtil
 } from 'fabric';
-import {
-  DEFAULT_SELECTION_STATE,
-  EditorSelectionState,
-  ElementType,
-  LabelElement,
-  LabelPage,
-  LineElement,
-  QRCodeElement,
-  TextElement,
-  TriangleElement,
-  RectElement
-} from './models/editor.models';
+import { DEFAULT_SELECTION_STATE, LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, EditorSelectionState, ElementType } from './models/editor.models';
+
 
 @Injectable()
 export class EditorCanvasService {

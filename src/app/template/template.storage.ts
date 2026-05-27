@@ -1,6 +1,6 @@
-import { Injectable, inject } from '@angular/core';
-import { Observable, of, from } from 'rxjs';
-import { LabelTemplate, StoredTemplate } from '../editor/models/template.models';
+import { Injectable } from '@angular/core';
+import { Observable, from } from 'rxjs';
+import { LabelTemplate } from '../editor/models/label.models';
 
 /**
  * 模板存储服务接口
@@ -9,11 +9,11 @@ import { LabelTemplate, StoredTemplate } from '../editor/models/template.models'
 @Injectable({ providedIn: 'root' })
 export abstract class TemplateStorageService {
   /** 获取所有模板 */
-  abstract getAll(): Observable<StoredTemplate[]>;
+  abstract getAll(): Observable<LabelTemplate[]>;
   /** 根据ID获取模板 */
-  abstract getById(id: string): Observable<StoredTemplate | null>;
+  abstract getById(id: string): Observable<LabelTemplate | null>;
   /** 保存模板 */
-  abstract save(template: StoredTemplate): Observable<void>;
+  abstract save(template: LabelTemplate): Observable<void>;
   /** 删除模板 */
   abstract delete(id: string): Observable<void>;
 }
@@ -24,18 +24,17 @@ export abstract class TemplateStorageService {
 @Injectable({ providedIn: 'root' })
 export class LocalStorageTemplateService implements TemplateStorageService {
   private readonly STORAGE_KEY = 'label-templates';
-  private readonly VERSION_KEY = 'label-templates-version';
   private readonly CURRENT_VERSION = '1.0';
 
-  getAll(): Observable<StoredTemplate[]> {
+  getAll(): Observable<LabelTemplate[]> {
     return from(this.getAllAsync());
   }
 
-  getById(id: string): Observable<StoredTemplate | null> {
+  getById(id: string): Observable<LabelTemplate | null> {
     return from(this.getByIdAsync(id));
   }
 
-  save(template: StoredTemplate): Observable<void> {
+  save(template: LabelTemplate): Observable<void> {
     return from(this.saveAsync(template));
   }
 
@@ -43,7 +42,7 @@ export class LocalStorageTemplateService implements TemplateStorageService {
     return from(this.deleteAsync(id));
   }
 
-  private async getAllAsync(): Promise<StoredTemplate[]> {
+  private async getAllAsync(): Promise<LabelTemplate[]> {
     try {
       const data = localStorage.getItem(this.STORAGE_KEY);
       if (!data) {
@@ -56,12 +55,12 @@ export class LocalStorageTemplateService implements TemplateStorageService {
     }
   }
 
-  private async getByIdAsync(id: string): Promise<StoredTemplate | null> {
+  private async getByIdAsync(id: string): Promise<LabelTemplate | null> {
     const templates = await this.getAllAsync();
     return templates.find(t => t.id === id) || null;
   }
 
-  private async saveAsync(template: StoredTemplate): Promise<void> {
+  private async saveAsync(template: LabelTemplate): Promise<void> {
     const templates = await this.getAllAsync();
     const existingIndex = templates.findIndex(t => t.id === template.id);
 
@@ -80,7 +79,7 @@ export class LocalStorageTemplateService implements TemplateStorageService {
     this.persistTemplates(filtered);
   }
 
-  private persistTemplates(templates: StoredTemplate[]): void {
+  private persistTemplates(templates: LabelTemplate[]): void {
     const data = {
       version: this.CURRENT_VERSION,
       templates

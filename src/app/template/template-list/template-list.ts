@@ -9,10 +9,10 @@ import { NzModalService } from 'ng-zorro-antd/modal';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzDividerModule } from 'ng-zorro-antd/divider';
 import { TemplateService } from '../template.service';
-import { StoredTemplate } from '../template.storage';
 import { GenerateLabelDialogComponent } from '../../generate-label/generate-label-dialog.component';
 import { GeneratedLabel } from '../../generate-label/generate-label.models';
 import { LabelPrintService } from '../../generate-label/label-print.service';
+import { LabelTemplate } from '../../editor/models';
 
 /**
  * 模板列表组件
@@ -63,7 +63,7 @@ import { LabelPrintService } from '../../generate-label/label-print.service';
                 }
                 <div class="template-info">
                   <h3>{{ template.name }}</h3>
-                  <p class="update-time">更新于 {{ formatDate(template.updatedAt) }}</p>
+                  <p class="update-time">更新于 {{ template.updatedAt ? formatDate(template.updatedAt) : '-' }}</p>
                 </div>
               </div>
               <ng-template #actionPrinter>
@@ -220,9 +220,9 @@ export class TemplateListComponent {
   private readonly message = inject(NzMessageService);
   private readonly labelPrintService = inject(LabelPrintService);
 
-  readonly templates = signal<StoredTemplate[]>([]);
+  readonly templates = signal<LabelTemplate[]>([]);
   readonly dialogVisible = signal(false);
-  readonly selectedTemplate = signal<StoredTemplate | null>(null);
+  readonly selectedTemplate = signal<LabelTemplate | null>(null);
   readonly generatedLabels = signal<GeneratedLabel[]>([]);
 
   constructor() {
@@ -249,14 +249,14 @@ export class TemplateListComponent {
   /**
    * 编辑现有模板
    */
-  editTemplate(template: StoredTemplate): void {
+  editTemplate(template: LabelTemplate): void {
     this.router.navigate(['/editor', template.id]);
   }
 
   /**
    * 生成标签
    */
-  generateLabels(template: StoredTemplate): void {
+  generateLabels(template: LabelTemplate): void {
     this.selectedTemplate.set(template);
     this.dialogVisible.set(true);
   }
@@ -327,7 +327,7 @@ export class TemplateListComponent {
   /**
    * 确认删除模板
    */
-  confirmDelete(template: StoredTemplate): void {
+  confirmDelete(template: LabelTemplate): void {
     this.modal.confirm({
       nzTitle: '确认删除',
       nzContent: `确定要删除模板"${template.name}"吗？此操作不可撤销。`,
@@ -341,7 +341,7 @@ export class TemplateListComponent {
   /**
    * 删除模板
    */
-  private deleteTemplate(template: StoredTemplate): void {
+  private deleteTemplate(template: LabelTemplate): void {
     this.templateService.deleteTemplate(template.id).subscribe({
       next: () => {
         this.message.success('删除成功');

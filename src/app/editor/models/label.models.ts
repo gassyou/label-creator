@@ -15,38 +15,6 @@ export interface PrintSetting {
 }
 
 /**
- * 标签模板
- */
-export interface LabelTemplate {
-  id: string;
-  name: string;
-  width: number;               // 标签宽度 mm
-  height: number;              // 标签高度 mm
-  backgroundColor: string;
-  backgroundImage?: string;
-  canvasJson: string;          // Fabric.js 画布数据
-  printSetting: PrintSetting;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-/**
- * 存储的模板数据结构
- */
-export interface StoredTemplate extends LabelTemplate {
-  thumbnail?: string;          // 200x200 base64 缩略图
-}
-
-/**
- * 纸张尺寸常量
- */
-export const PAPER_SIZES: Record<string, { width: number; height: number }> = {
-  'A4': { width: 210, height: 297 },
-  'A5': { width: 148, height: 210 },
-  'letter': { width: 216, height: 279 }
-};
-
-/**
  * 默认打印设置
  */
 export const DEFAULT_PRINT_SETTING: PrintSetting = {
@@ -59,6 +27,33 @@ export const DEFAULT_PRINT_SETTING: PrintSetting = {
   gapX: 0,
   gapY: 0
 };
+
+/**
+ * 标签数据
+ */
+export interface Label {
+  id: string;
+  width: number;               // 标签宽度 mm
+  height: number;              // 标签高度 mm
+  backgroundColor: string;
+  backgroundImage?: string;
+  canvasJson: string;          // Fabric.js 画布数据
+}
+
+
+/**
+ * 标签模板
+ */
+export interface LabelTemplate {
+  id: string;
+  name: string;
+  label: Label;
+  printSetting: PrintSetting;
+  thumbnail?: string;          // 200x200 base64 缩略图
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 
 /**
  * 标签尺寸预设
@@ -95,8 +90,10 @@ export function getPaperSize(
   if (paperSize === 'custom' && customWidth && customHeight) {
     return { width: customWidth, height: customHeight };
   }
-  const size = PAPER_SIZES[paperSize] || PAPER_SIZES['A4'];
-  return orientation === 'portrait' ? size : { width: size.height, height: size.width };
+  const preset = PAGE_SIZE_PRESETS.find(p => p.id === `${paperSize}-${orientation}`);
+  return preset
+    ? { width: preset.widthMm, height: preset.heightMm }
+    : { width: 210, height: 297 }; // fallback A4
 }
 
 /**

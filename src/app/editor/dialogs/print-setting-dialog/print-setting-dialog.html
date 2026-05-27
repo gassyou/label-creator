@@ -19,8 +19,8 @@
     <div class="setting-row">
       <label>方向</label>
       <nz-radio-group [(ngModel)]="printSetting().orientation">
-        <nz-radio-button value="portrait">纵向</nz-radio-button>
-        <nz-radio-button value="landscape">横向</nz-radio-button>
+        <label nz-radio nzValue="portrait">纵向</label>
+        <label nz-radio nzValue="landscape">横向</label>
       </nz-radio-group>
     </div>
 
@@ -29,21 +29,21 @@
       <div class="inline-row">
         <div class="setting-field">
           <label>上</label>
-          <nz-input-number [(ngModel)]="printSetting().marginTop" [min]="0" [step]="1"></nz-input-number>
+          <nz-input-number [(ngModel)]="printSetting().marginTop" [nzMin]="0" [nzStep]="1"></nz-input-number>
         </div>
         <div class="setting-field">
           <label>下</label>
-          <nz-input-number [(ngModel)]="printSetting().marginBottom" [min]="0" [step]="1"></nz-input-number>
+          <nz-input-number [(ngModel)]="printSetting().marginBottom" [nzMin]="0" [nzStep]="1"></nz-input-number>
         </div>
       </div>
       <div class="inline-row">
         <div class="setting-field">
           <label>左</label>
-          <nz-input-number [(ngModel)]="printSetting().marginLeft" [min]="0" [step]="1"></nz-input-number>
+          <nz-input-number [(ngModel)]="printSetting().marginLeft" [nzMin]="0" [nzStep]="1"></nz-input-number>
         </div>
         <div class="setting-field">
           <label>右</label>
-          <nz-input-number [(ngModel)]="printSetting().marginRight" [min]="0" [step]="1"></nz-input-number>
+          <nz-input-number [(ngModel)]="printSetting().marginRight" [nzMin]="0" [nzStep]="1"></nz-input-number>
         </div>
       </div>
     </div>
@@ -53,11 +53,11 @@
       <div class="inline-row">
         <div class="setting-field">
           <label>横向</label>
-          <nz-input-number [(ngModel)]="printSetting().gapX" [min]="0" [step]="0.5"></nz-input-number>
+          <nz-input-number [(ngModel)]="printSetting().gapX" [nzMin]="0" [nzStep]="0.5"></nz-input-number>
         </div>
         <div class="setting-field">
           <label>纵向</label>
-          <nz-input-number [(ngModel)]="printSetting().gapY" [min]="0" [step]="0.5"></nz-input-number>
+          <nz-input-number [(ngModel)]="printSetting().gapY" [nzMin]="0" [nzStep]="0.5"></nz-input-number>
         </div>
       </div>
     </div>

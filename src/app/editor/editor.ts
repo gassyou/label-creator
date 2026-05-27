@@ -18,25 +18,21 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { EditorCanvasService } from './editor-canvas.service';
 import {
-  LabelTemplate,
-  DEFAULT_PRINT_SETTING,
-  PAGE_SIZE_PRESETS,
-  millimetersToPixels,
-  pixelsToMillimeters,
   EditorSelectionState,
   EditorTool,
   DEFAULT_SELECTION_STATE
 } from './models/editor.models';
-import { EditorPdfService } from './editor-pdf.service';
 import { EditorPropertiesPanelComponent } from './editor-properties-panel';
 import { EditorTopbarComponent } from './editor-topbar';
 import { EditorToolStripComponent } from './editor-tool-strip';
 import { TemplateService } from '../template/template.service';
+import { DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
+import { LabelGeneratorService } from '../print/label-generator.service';
 
 @Component({
   selector: 'app-editor',
   imports: [FormsModule, EditorPropertiesPanelComponent, EditorTopbarComponent, EditorToolStripComponent],
-  providers: [EditorCanvasService, EditorPdfService],
+  providers: [EditorCanvasService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
   styleUrl: './editor.scss'
@@ -45,7 +41,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('htmlCanvas', { static: true }) htmlCanvas!: ElementRef<HTMLCanvasElement>;
 
   readonly canvasService = inject(EditorCanvasService);
-  private readonly pdfService = inject(EditorPdfService);
   private readonly templateService = inject(TemplateService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -440,11 +435,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     return {
       id: this.templateId || `tpl-${Date.now()}`,
       name: this.templateName(),
-      width: Math.round(pixelsToMillimeters(this.canvasState().width)),
-      height: Math.round(pixelsToMillimeters(this.canvasState().height)),
-      backgroundColor: this.canvasState().backgroundColor,
-      backgroundImage: this.canvasState().backgroundImage,
-      canvasJson: this.canvasService.serializeCanvas(),
+      label: {
+        id: `label-${Date.now()}`,
+        width: Math.round(pixelsToMillimeters(this.canvasState().width)),
+        height: Math.round(pixelsToMillimeters(this.canvasState().height)),
+        backgroundColor: this.canvasState().backgroundColor,
+        backgroundImage: this.canvasState().backgroundImage,
+        canvasJson: this.canvasService.serializeCanvas()
+      },
       printSetting: this.template().printSetting
     };
   }
@@ -493,18 +491,18 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async exportPdf(): Promise<void> {
     const labelTemplate = this.buildLabelTemplate();
-    const widthMm = labelTemplate.width;
-    const heightMm = labelTemplate.height;
-    await this.pdfService.exportDocument([{
-      id: 'export-page',
-      name: 'Export Page',
-      widthMm,
-      heightMm,
-      backgroundColor: labelTemplate.backgroundColor,
-      backgroundImage: labelTemplate.backgroundImage,
-      canvasState: this.canvasState(),
-      canvasJson: labelTemplate.canvasJson
-    }], 'label-document.pdf');
+    const labelData: Label = {
+      id: labelTemplate.label.id,
+      width: labelTemplate.label.width,
+      height: labelTemplate.label.height,
+      backgroundColor: labelTemplate.label.backgroundColor,
+      backgroundImage: labelTemplate.label.backgroundImage,
+      canvasJson: labelTemplate.label.canvasJson
+    };
+
+    const generatorService = new LabelGeneratorService(labelTemplate.printSetting);
+    const blob = await generatorService.generatePdf([labelData]);
+    generatorService.download(blob, 'label-document.pdf');
   }
 
   openPrintSettingDialog(): void {
