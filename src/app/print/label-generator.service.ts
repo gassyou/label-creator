@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Label, PrintSetting } from '../editor/models/label.models';
+import { Label, PrintSetting, DEFAULT_PRINT_SETTING } from '../editor/models/label.models';
 import { LabelGenerator, GeneratorType, PdfGenerateOptions, PngGenerateOptions, SvgGenerateOptions } from './generators/label-generator.interface';
 import { PdfLabelGenerator } from './generators/pdf-label.generator';
 import { PngLabelGenerator } from './generators/png-label.generator';
@@ -44,6 +44,31 @@ export class LabelGeneratorService {
   async generatePdf(labels: Label[], printSetting: PrintSetting, options?: PdfGenerateOptions): Promise<Blob> {
     const generator = this.getGenerator('pdf', printSetting);
     return generator.generate(labels, options) as Promise<Blob>;
+  }
+
+  /**
+   * 生成单个 PNG（不进行排版布局，直接生成标签本身）
+   */
+  async generateSinglePng(label: Label, multiplier = 2): Promise<Blob> {
+    const generator = this.getGenerator('png', DEFAULT_PRINT_SETTING);
+    return generator.generateSingle(label, { multiplier }) as Promise<Blob>;
+  }
+
+  /**
+   * 生成单个 SVG（不进行排版布局，直接生成标签本身）
+   */
+  async generateSingleSvg(label: Label): Promise<string> {
+    const generator = this.getGenerator('svg', DEFAULT_PRINT_SETTING);
+    const result = await generator.generateSingle(label, { asString: true } as any);
+    return typeof result === 'string' ? result : new TextDecoder().decode(await result.arrayBuffer());
+  }
+
+  /**
+   * 生成单个 PDF（不进行排版布局，直接生成标签本身）
+   */
+  async generateSinglePdf(label: Label): Promise<Blob> {
+    const generator = this.getGenerator('pdf', DEFAULT_PRINT_SETTING);
+    return generator.generateSingle(label) as Promise<Blob>;
   }
 
   /**

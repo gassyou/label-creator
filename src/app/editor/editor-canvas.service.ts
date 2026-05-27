@@ -623,61 +623,6 @@ export class EditorCanvasService {
     });
   }
 
-  exportPng(): void {
-    if (!this.canvas) {
-      return;
-    }
-
-    const image = new Image();
-    image.src = this.canvas.toDataURL({ format: 'png', multiplier: 1 });
-    const popup = window.open('');
-    popup?.document.write(image.outerHTML);
-    this.downloadPng();
-  }
-
-  downloadPng(): void {
-    if (!this.canvas) {
-      return;
-    }
-
-    const data = this.canvas.toDataURL({ format: 'png', multiplier: 1 });
-    const link = document.createElement('a');
-    link.href = data;
-    link.download = `${Date.now()}.png`;
-    link.click();
-  }
-
-  exportPngData(multiplier = 2): string {
-    if (!this.canvas) {
-      return '';
-    }
-
-    return this.canvas.toDataURL({ format: 'png', multiplier });
-  }
-
-  exportSvg(): void {
-    if (!this.canvas) {
-      return;
-    }
-
-    const popup = window.open('');
-    const svg = this.canvas.toSVG();
-    popup?.document.write(svg);
-    this.downloadSvg();
-  }
-
-  downloadSvg(): void {
-    if (!this.canvas) {
-      return;
-    }
-
-    const data = `data:image/svg+xml;utf8,${encodeURIComponent(this.canvas.toSVG())}`;
-    const link = document.createElement('a');
-    link.href = data;
-    link.download = `${Date.now()}.svg`;
-    link.click();
-  }
-
   // ============================================================
   // Selection Operations
   // ============================================================

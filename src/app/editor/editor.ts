@@ -26,8 +26,8 @@ import { EditorPropertiesPanelComponent } from './editor-properties-panel';
 import { EditorTopbarComponent } from './editor-topbar';
 import { EditorToolStripComponent } from './editor-tool-strip';
 import { TemplateService } from '../template/template.service';
-import { DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
 import { LabelGeneratorService } from '../print/label-generator.service';
+import { DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
 
 @Component({
   selector: 'app-editor',
@@ -45,6 +45,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly message = inject(NzMessageService);
+  private readonly labelGeneratorService = inject(LabelGeneratorService);
 
   readonly activeTool = signal<EditorTool>('select');
   readonly selectionState = signal<EditorSelectionState>({ ...DEFAULT_SELECTION_STATE });
@@ -77,12 +78,17 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   });
 
   /** Canvas state derived from template (px) - auto-synced with template */
-  readonly canvasState = computed(() => ({
-    width: millimetersToPixels(this.template().label.width),
-    height: millimetersToPixels(this.template().label.height),
-    backgroundColor: this.template().label.backgroundColor,
-    backgroundImage: this.template().label.backgroundImage || ''
-  }));
+  readonly canvasState = computed(() => {
+    const t = this.template();
+    // Defensive: handle both old flat structure and new nested structure
+    const label = t?.label ?? { width: 210, height: 297, backgroundColor: '#ffffff', backgroundImage: '' };
+    return {
+      width: millimetersToPixels(label.width ?? 210),
+      height: millimetersToPixels(label.height ?? 297),
+      backgroundColor: label.backgroundColor ?? '#ffffff',
+      backgroundImage: label.backgroundImage || ''
+    };
+  });
 
   textString = '';
   private hasCanvasInitialized = false;
@@ -473,11 +479,17 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   rasterize(): void {
-    this.canvasService.exportPng();
+    const label = this.buildLabelTemplate().label;
+    this.labelGeneratorService.generateSinglePng(label).then(blob => {
+      this.labelGeneratorService.download(blob, 'label.png');
+    });
   }
 
   rasterizeSVG(): void {
-    this.canvasService.exportSvg();
+    const label = this.buildLabelTemplate().label;
+    this.labelGeneratorService.generateSingleSvg(label).then(svg => {
+      this.labelGeneratorService.downloadSvg(svg, 'label.svg');
+    });
   }
 
   zoomIn(): void {
@@ -499,9 +511,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       canvasJson: labelTemplate.label.canvasJson
     };
 
-    const generatorService = new LabelGeneratorService();
-    const blob = await generatorService.generatePdf([labelData], labelTemplate.printSetting);
-    generatorService.download(blob, 'label-document.pdf');
+    const blob = await this.labelGeneratorService.generateSinglePdf(labelData);
+    this.labelGeneratorService.download(blob, 'label-document.pdf');
   }
 
   openPrintSettingDialog(): void {
