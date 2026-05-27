@@ -141,7 +141,8 @@ export class LabelDataBindingService {
       const size = Math.min(widthPx, heightPx);
       const dataUrl = await generateQRCodeSVG(resolvedValue, size);
 
-      return { ...obj, src: dataUrl };
+      // Reset scale to 1 so image displays at actual size within object bounds
+      return { ...obj, src: dataUrl, scaleX: 1, scaleY: 1 };
     }
 
     return obj;

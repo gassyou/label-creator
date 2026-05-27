@@ -112,11 +112,11 @@ export class PdfLabelGenerator implements LabelGenerator {
 
     const canvas = new Canvas(element, {
       selection: false,
-      renderOnAddRemove: false,
-      width: widthPx,
-      height: heightPx
+      renderOnAddRemove: false
     });
 
+    // Explicitly set dimensions
+    canvas.setDimensions({ width: widthPx, height: heightPx });
     canvas.backgroundColor = label.backgroundColor;
 
     if (label.backgroundImage) {
@@ -133,17 +133,30 @@ export class PdfLabelGenerator implements LabelGenerator {
     }
 
     if (label.canvasJson) {
-      await canvas.loadFromJSON(label.canvasJson);
+      const parsed = JSON.parse(label.canvasJson);
 
-      // Reset viewport transform to ensure correct positioning
+      // Override canvas dimensions in JSON to match our label size
+      if (parsed.width) parsed.width = widthPx;
+      if (parsed.height) parsed.height = heightPx;
+
+      await canvas.loadFromJSON(parsed);
+
+      // Reset viewport transform and dimensions
       canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-      canvas.forEachObject((obj) => {
-        obj.setCoords();
+      canvas.setDimensions({ width: widthPx, height: heightPx });
+
+      // Force each image object to display at its natural size within object bounds
+      // This fixes QR/barcode clipping issues where the image is larger than the object
+      canvas.forEachObject((obj: any) => {
+        if (obj.type === 'image' && obj.elementType) {
+          // Reset scale to 1 and let image display at natural size
+          obj.set({ scaleX: 1, scaleY: 1 });
+          obj.setCoords();
+        }
       });
     }
 
     canvas.requestRenderAll();
-    // multiplier enhances resolution for PDF output
     const png = canvas.toDataURL({ format: 'png', multiplier });
     canvas.dispose();
     return png;
