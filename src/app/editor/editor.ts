@@ -25,8 +25,6 @@ import {
   getPaperSize,
   millimetersToPixels,
   pixelsToMillimeters,
-  DEFAULT_CANVAS_STATE,
-  EditorCanvasState,
   EditorSelectionState,
   EditorTool,
   DEFAULT_SELECTION_STATE
