@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, output, signal, computed, inject, NgZone } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, signal, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzUploadModule, NzUploadFile } from 'ng-zorro-antd/upload';
@@ -56,7 +56,6 @@ export class EditorPropertiesPanelComponent {
   readonly canvasWidth = computed(() => Math.round(pixelsToMillimeters(this.canvasState().width)));
   readonly canvasHeight = computed(() => Math.round(pixelsToMillimeters(this.canvasState().height)));
   private readonly message = inject(NzMessageService);
-  private readonly ngZone = inject(NgZone);
 
   onPageSizeChange(sizeId: string): void {
     this.pageSize.set(sizeId);
@@ -85,10 +84,8 @@ export class EditorPropertiesPanelComponent {
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const result = e.target?.result as string;
-      this.ngZone.run(() => {
-        this.canvasImageChanged.emit(result);
-      });
+      const result = (e.target as FileReader).result as string;
+      this.canvasImageChanged.emit(result);
     };
     reader.readAsDataURL(file as unknown as File);
     return false;

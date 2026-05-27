@@ -223,14 +223,20 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   updateCanvasImage(backgroundImage: string): void {
-    this.template.update((t) => ({
-      ...t,
-      label: { ...t.label, backgroundImage }
-    }));
     if (backgroundImage) {
-      this.canvasService.applyCanvasImage(backgroundImage, () => {
+      this.canvasService.compressAndApplyBackgroundImage(backgroundImage, (compressed) => {
+        this.template.update((t) => ({
+          ...t,
+          label: { ...t.label, backgroundImage: compressed }
+        }));
         this.isDirty.set(true);
       });
+    } else {
+      this.template.update((t) => ({
+        ...t,
+        label: { ...t.label, backgroundImage: '' }
+      }));
+      this.canvasService.applyCanvasFill(this.canvasState().backgroundColor, '');
     }
   }
 

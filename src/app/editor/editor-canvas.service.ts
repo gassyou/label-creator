@@ -536,6 +536,39 @@ export class EditorCanvasService {
     });
   }
 
+  /**
+   * Compress image data URL to max dimension and return compressed data URL
+   */
+  private compressImageDataUrl(dataUrl: string, maxDimension: number = 1920): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Scale down if larger than max dimension
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height / width) * maxDimension);
+            width = maxDimension;
+          } else {
+            width = Math.round((width / height) * maxDimension);
+            height = maxDimension;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+
   // ============================================================
   // Serialization
   // ============================================================
@@ -1314,6 +1347,7 @@ export class EditorCanvasService {
     });
 
     this.canvas.backgroundColor = pattern;
+    this.canvas.requestRenderAll();
   }
 
   private touchRevision(): void {
@@ -1323,6 +1357,29 @@ export class EditorCanvasService {
 
     this.revision.update((value) => value + 1);
     this.jsonPreview.set(JSON.stringify(this.canvas?.toJSON() ?? {}, null, 2));
+  }
+
+  /**
+   * Compress image and apply as background
+   */
+  compressAndApplyBackgroundImage(dataUrl: string, onApplied: (compressedDataUrl: string) => void): void {
+    if (!this.canvas) {
+      return;
+    }
+
+    this.compressImageDataUrl(dataUrl, 1920).then(compressed => {
+      FabricImage.fromURL(compressed).then((image) => {
+        const pattern = new Pattern({
+          source: image.getElement(),
+          repeat: 'repeat'
+        });
+
+        this.canvas!.backgroundColor = pattern;
+        this.touchRevision();
+        this.canvas!.requestRenderAll();
+        onApplied(compressed);
+      });
+    });
   }
 
   // ============================================================

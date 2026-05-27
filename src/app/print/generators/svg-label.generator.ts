@@ -1,5 +1,5 @@
 import { Label, PrintSetting } from '../../editor/models/label.models';
-import { Canvas } from 'fabric';
+import { Canvas, FabricImage, Pattern } from 'fabric';
 import { LabelGenerator, SvgGenerateOptions } from './label-generator.interface';
 import { PrintLayoutCalculator } from './print-layout-calculator';
 
@@ -79,6 +79,19 @@ export class SvgLabelGenerator implements LabelGenerator {
 
     canvas.setDimensions({ width: widthPx, height: heightPx });
     canvas.backgroundColor = label.backgroundColor;
+
+    if (label.backgroundImage) {
+      try {
+        const bgImg = await FabricImage.fromURL(label.backgroundImage);
+        const pattern = new Pattern({
+          source: bgImg.getElement(),
+          repeat: 'repeat'
+        });
+        canvas.backgroundColor = pattern;
+      } catch (err) {
+        console.error('[renderLabelToSvg] failed to load background image:', err);
+      }
+    }
 
     if (label.canvasJson) {
       await canvas.loadFromJSON(label.canvasJson);

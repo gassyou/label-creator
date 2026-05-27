@@ -1,5 +1,5 @@
 import { Label, PrintSetting, millimetersToPixels } from '../../editor/models/label.models';
-import { Canvas,  } from 'fabric';
+import { Canvas, FabricImage, Pattern } from 'fabric';
 import { LabelGenerator, PdfGenerateOptions } from './label-generator.interface';
 import { PrintLayoutCalculator } from './print-layout-calculator';
 
@@ -109,6 +109,21 @@ export class PdfLabelGenerator implements LabelGenerator {
 
     canvas.setDimensions({ width: widthPx, height: heightPx });
     canvas.backgroundColor = label.backgroundColor;
+
+    console.log('[PDF renderLabelToPng] backgroundImage:', label.backgroundImage?.substring(0, 50));
+
+    if (label.backgroundImage) {
+      try {
+        const bgImg = await FabricImage.fromURL(label.backgroundImage);
+        const pattern = new Pattern({
+          source: bgImg.getElement(),
+          repeat: 'repeat'
+        });
+        canvas.backgroundColor = pattern;
+      } catch (err) {
+        console.error('[PDF renderLabelToPng] failed to load background image:', err);
+      }
+    }
 
     if (label.canvasJson) {
       await canvas.loadFromJSON(label.canvasJson);

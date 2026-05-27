@@ -16,7 +16,7 @@
         <option value="custom">Custom</option>
       </select>
     </label>
-    <div class="size-display">
+    <div class="size-display inline-row">
       <label>
         <span>Width (mm)</span>
         <input type="number" [ngModel]="canvasWidth()" (ngModelChange)="onSizeChange('width', $event)" />
@@ -28,23 +28,45 @@
     </div>
     <label>
       <span>Background Color</span>
-      <input
-        type="color"
-        [ngModel]="canvasState().backgroundColor"
-        (ngModelChange)="canvasFillChanged.emit($event)"
-      />
+      <div class="color-input-row">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="!canvasState().backgroundColor"
+            (change)="canvasFillChanged.emit($any($event.target).checked ? '' : '#ffffff')"
+          />
+          <span>None</span>
+        </label>
+        <input
+          type="color"
+          [ngModel]="canvasState().backgroundColor"
+          (ngModelChange)="canvasFillChanged.emit($event)"
+          [disabled]="!canvasState().backgroundColor"
+        />
+      </div>
     </label>
     <label>
       <span>Background Image</span>
-      <nz-upload
-        [nzShowUploadList]="false"
-        [nzBeforeUpload]="beforeUpload"
-      >
-        <button nz-button nzType="primary" nzSize="small" type="button">
-          <span nz-icon nzType="upload"></span>
-          Upload
-        </button>
-      </nz-upload>
+      <div class="color-input-row">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            [checked]="!canvasState().backgroundImage"
+            (change)="canvasImageChanged.emit($any($event.target).checked ? '' : canvasState().backgroundImage || '')"
+          />
+          <span>None</span>
+        </label>
+        <nz-upload
+          [nzShowUploadList]="false"
+          [nzBeforeUpload]="beforeUpload.bind(this)"
+          [nzDisabled]="!!canvasState().backgroundImage"
+        >
+          <button nz-button nzType="primary" nzSize="small" type="button">
+            <span nz-icon nzType="upload"></span>
+            Upload
+          </button>
+        </nz-upload>
+      </div>
       @if (canvasState().backgroundImage) {
         <div class="bg-preview">
           <img [src]="canvasState().backgroundImage" alt="Background preview" />
