@@ -3,6 +3,5 @@
  */
 
 export * from './generate-label.models';
-export * from './label-generation.service';
-export * from './label-print.service';
+export * from './label-data-generation.service';
 export * from './generate-label-dialog.component';

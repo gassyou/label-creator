@@ -11,8 +11,9 @@ import { NzDividerModule } from 'ng-zorro-antd/divider';
 import { TemplateService } from '../template.service';
 import { GenerateLabelDialogComponent } from '../../generate-label/generate-label-dialog.component';
 import { GeneratedLabel } from '../../generate-label/generate-label.models';
-import { LabelPrintService } from '../../generate-label/label-print.service';
-import { LabelTemplate } from '../../editor/models';
+import { LabelTemplate, DEFAULT_PRINT_SETTING } from '../../editor/models';
+import { LabelDataBindingService, BindingData } from '../../print/label-data-binding.service';
+import { LabelGeneratorService } from '../../print/label-generator.service';
 
 /**
  * 模板列表组件
@@ -218,7 +219,8 @@ export class TemplateListComponent {
   private readonly router = inject(Router);
   private readonly modal = inject(NzModalService);
   private readonly message = inject(NzMessageService);
-  private readonly labelPrintService = inject(LabelPrintService);
+  private readonly labelDataBindingService = inject(LabelDataBindingService);
+  private readonly labelGeneratorService = inject(LabelGeneratorService);
 
   readonly templates = signal<LabelTemplate[]>([]);
   readonly dialogVisible = signal(false);
@@ -272,56 +274,47 @@ export class TemplateListComponent {
   /**
    * 处理生成的标签数据
    */
-  handleLabelsGenerated(labels: GeneratedLabel[]): void {
-    this.generatedLabels.set(labels);
-    this.showLabelActionsModal(labels);
-  }
+  async handleLabelsGenerated(labels: GeneratedLabel[]): Promise<void> {
+    const template = this.selectedTemplate();
+    if (!template) {
+      this.message.error('未选择模板');
+      return;
+    }
 
-  /**
-   * 显示标签操作选项模态框
-   */
-  private showLabelActionsModal(labels: GeneratedLabel[]): void {
-    this.modal.info({
-      nzTitle: '标签生成完成',
-      nzContent: `已成功生成 ${labels.length} 条标签数据`,
-      nzOkText: '关闭',
-      nzWidth: 600,
-      nzFooter: [
-        {
-          label: '打印标签',
-          type: 'primary',
-          onClick: () => {
-            this.labelPrintService.printLabels(labels);
-            this.message.success('打印对话框已打开');
-            this.modal.closeAll();
-          }
-        },
-        {
-          label: '导出 CSV',
-          onClick: () => {
-            this.labelPrintService.exportAsCSV(labels);
-            this.message.success('CSV 文件已下载');
-            this.modal.closeAll();
-          }
-        },
-        {
-          label: '导出 JSON',
-          onClick: () => {
-            this.labelPrintService.exportAsJSON(labels);
-            this.message.success('JSON 文件已下载');
-            this.modal.closeAll();
-          }
-        },
-        {
-          label: '导出 PDF',
-          onClick: () => {
-            this.labelPrintService.exportAsPDF(labels);
-            this.message.success('PDF 文件已下载');
-            this.modal.closeAll();
-          }
-        }
-      ]
-    });
+    try {
+      // 将 GeneratedLabel 转换为 BindingData
+      const bindingPromises = labels.map(async (genLabel, index) => {
+        const data: BindingData = {
+          '产品名': genLabel.产品名,
+          '材料编号': genLabel.材料编号,
+          '材料描述': genLabel.材料描述,
+          '客户名称': genLabel.客户名称,
+          '客户采购订单': genLabel.客户采购订单,
+          '交货时间': genLabel.交货时间,
+          '单位装箱数': genLabel.单位装箱数,
+          '位子': genLabel.位子,
+          '批号': genLabel.批号,
+          'index': index + 1
+        };
+
+        const result = await this.labelDataBindingService.bind(template.label, data);
+        return result.label;
+      });
+
+      const boundLabels = await Promise.all(bindingPromises);
+
+      // 生成 PDF
+      const pdfBlob = await this.labelGeneratorService.generatePdf(boundLabels, template.printSetting || DEFAULT_PRINT_SETTING);
+
+      // 下载 PDF
+      this.labelGeneratorService.download(pdfBlob, `${template.name || 'labels'}.pdf`);
+
+      this.message.success('PDF 生成成功');
+      this.dialogVisible.set(false);
+    } catch (err) {
+      console.error('生成 PDF 失败:', err);
+      this.message.error('生成 PDF 失败');
+    }
   }
 
   /**

@@ -13,7 +13,7 @@ import {
  * 负责核心的标签数据生成逻辑
  */
 @Injectable({ providedIn: 'root' })
-export class LabelGenerationService {
+export class LabelDataGenerationService {
   /**
    * 生成标签数据
    *

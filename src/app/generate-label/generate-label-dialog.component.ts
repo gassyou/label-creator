@@ -15,7 +15,7 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzPopoverModule } from 'ng-zorro-antd/popover';
-import { LabelGenerationService } from './label-generation.service';
+import { LabelDataGenerationService } from './label-data-generation.service';
 import { LabelTemplate } from '../editor/models/label.models';
 import {
   BatchInfo,
@@ -448,7 +448,7 @@ export class GenerateLabelDialogComponent implements OnInit {
   @Output() dialogClosed = new EventEmitter<void>();
 
   private readonly fb = inject(FormBuilder);
-  private readonly labelGenerationService = inject(LabelGenerationService);
+  private readonly labelGenerationService = inject(LabelDataGenerationService);
   private readonly message = inject(NzMessageService);
 
   readonly isGenerating = signal(false);
