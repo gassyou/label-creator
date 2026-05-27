@@ -59,6 +59,17 @@ export interface PngGenerateOptions extends GenerateOptions {
    * 是否返回 base64 字符串，默认 false（返回 Blob）
    */
   asDataUrl?: boolean;
+
+  /**
+   * 是否生成缩略图模式
+   * 为 true 时，图片会等比缩放到 maxDimension 限制的尺寸内，保证文件小且有一定质量
+   */
+  thumbnail?: boolean;
+
+  /**
+   * 缩略图最大尺寸，默认 200
+   */
+  thumbnailMaxDimension?: number;
 }
 
 /**

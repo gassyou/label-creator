@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, from, map, switchMap } from 'rxjs';
-import { Canvas } from 'fabric';
 import { TemplateStorageService } from './template.storage';
 import { Label, LabelTemplate } from '../editor/models';
+import { LabelGeneratorService } from '../print/label-generator.service';
 
 /**
  * 模板服务
@@ -11,6 +11,7 @@ import { Label, LabelTemplate } from '../editor/models';
 @Injectable({ providedIn: 'root' })
 export class TemplateService {
   private readonly storage = inject(TemplateStorageService);
+  private readonly labelGenerator = inject(LabelGeneratorService);
 
   /**
    * 获取所有模板
@@ -85,113 +86,23 @@ export class TemplateService {
     }
 
     try {
-      return await this.renderCanvasToThumbnail(label);
+      const blob = await this.labelGenerator.generateSinglePng(label, {
+        thumbnail: true,
+        thumbnailMaxDimension: 200
+      });
+      return await this.blobToDataUrl(blob);
     } catch (error) {
       console.error('Failed to generate thumbnail:', error);
       return '';
     }
   }
 
-  /**
-   * 渲染 Canvas 到缩略图
-   */
-  private async renderCanvasToThumbnail(label: Label): Promise<string> {
+  private blobToDataUrl(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
-      const canvasElement = document.createElement('canvas');
-
-      // 设置缩略图尺寸 200x200
-      const thumbWidth = 200;
-      const thumbHeight = 200;
-
-      canvasElement.width = thumbWidth;
-      canvasElement.height = thumbHeight;
-
-      const canvas = new Canvas(canvasElement, {
-        selection: false,
-        renderOnAddRemove: false
-      });
-
-      // 设置原始尺寸
-      canvas.setDimensions({
-        width: label.width,
-        height: label.height
-      });
-
-      // 设置背景
-      const bgImage = label.backgroundImage;
-      if (bgImage) {
-        // 异步加载背景图
-        import('fabric').then(({ FabricImage, Pattern }) => {
-          FabricImage.fromURL(bgImage).then((image) => {
-            const pattern = new Pattern({
-              source: image.getElement(),
-              repeat: 'repeat'
-            });
-            canvas.backgroundColor = pattern;
-            this.loadAndRender(canvas, label.canvasJson!, thumbWidth, thumbHeight)
-              .then(resolve)
-              .catch(reject);
-          }).catch(reject);
-        }).catch(reject);
-      } else {
-        canvas.backgroundColor = label.backgroundColor;
-        this.loadAndRender(canvas, label.canvasJson!, thumbWidth, thumbHeight)
-          .then(resolve)
-          .catch(reject);
-      }
-    });
-  }
-
-  /**
-   * 加载 JSON 并渲染为缩略图
-   */
-  private loadAndRender(
-    canvas: Canvas,
-    canvasJson: string,
-    thumbWidth: number,
-    thumbHeight: number
-  ): Promise<string> {
-    return new Promise((resolve, reject) => {
-      canvas.loadFromJSON(canvasJson).then(() => {
-        // 计算缩放比例，保持宽高比
-        const originalWidth = canvas.width ?? 100;
-        const originalHeight = canvas.height ?? 100;
-        const scale = Math.min(thumbWidth / originalWidth, thumbHeight / originalHeight);
-
-        // 创建临时 canvas 用于缩放
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = thumbWidth;
-        tempCanvas.height = thumbHeight;
-        const ctx = tempCanvas.getContext('2d');
-
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
-
-        // 渲染原始 canvas 到临时 canvas（居中填充）
-        const dataUrl = canvas.toDataURL({ format: 'png', multiplier: 1 });
-        const img = new Image();
-
-        img.onload = () => {
-          // 计算居中裁剪
-          const scaledWidth = originalWidth * scale;
-          const scaledHeight = originalHeight * scale;
-          const offsetX = (thumbWidth - scaledWidth) / 2;
-          const offsetY = (thumbHeight - scaledHeight) / 2;
-
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, thumbWidth, thumbHeight);
-          ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
-
-          resolve(tempCanvas.toDataURL('image/png', 0.8));
-        };
-
-        img.onerror = reject;
-        img.src = dataUrl;
-
-        canvas.dispose();
-      }).catch(reject);
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
     });
   }
 
