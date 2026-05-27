@@ -21,7 +21,7 @@ import {
   TextElement,
   TriangleElement,
   RectElement
-} from './models/label.models';
+} from './models/editor.models';
 
 @Injectable()
 export class EditorCanvasService {

@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Canvas, FabricImage, Pattern } from 'fabric';
-import { LabelPage, millimetersToPixels } from './models/label.models';
+import { LabelPage, millimetersToPixels } from './models/editor.models';
 
 @Injectable()
 export class EditorPdfService {

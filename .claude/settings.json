@@ -9,7 +9,12 @@
       "Read(//Users/rococo/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/**)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(sed -i '' \"s/from '\\\\.\\\\.\\\\/models\\\\/template\\\\.models'/from '.\\\\/models\\\\/label.models'/g\" editor/*.ts)",
+      "Bash(sed -i '' \"s/from '\\\\.\\\\/models\\\\/template\\\\.models'/from '.\\\\/models\\\\/label.models'/g\" editor/**/*.ts)",
+      "Bash(sed -i '' \"s/from '\\\\.\\\\/models\\\\/label\\\\.models'/from '.\\\\/models\\\\/editor.models'/g\" editor/*.ts)",
+      "Bash(sed -i '' \"s/from '\\\\.\\\\/models\\\\/label\\\\.models'/from '.\\\\/models\\\\/editor.models'/g\" editor/**/*.ts)",
+      "Bash(sed -i '' \"s/from '\\\\.\\\\.\\\\/editor\\\\/models\\\\/label\\\\.models'/from '.\\\\/editor\\\\/models\\\\/label.models'/g\" template/*.ts)"
     ]
   }
 }

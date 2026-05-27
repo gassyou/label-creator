@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NzIconModule } from 'ng-zorro-antd/icon';
-import { EditorSelectionState } from './models/label.models';
+import { EditorSelectionState } from './models/editor.models';
 
 @Component({
   selector: 'app-editor-properties-panel',

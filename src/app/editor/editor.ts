@@ -19,16 +19,14 @@ import { NzMessageService } from 'ng-zorro-antd/message';
 import { EditorCanvasService } from './editor-canvas.service';
 import {
   LabelTemplate,
-  PrintSetting,
   DEFAULT_PRINT_SETTING,
   PAGE_SIZE_PRESETS,
-  getPaperSize,
   millimetersToPixels,
   pixelsToMillimeters,
   EditorSelectionState,
   EditorTool,
   DEFAULT_SELECTION_STATE
-} from './models/label.models';
+} from './models/editor.models';
 import { EditorPdfService } from './editor-pdf.service';
 import { EditorPropertiesPanelComponent } from './editor-properties-panel';
 import { EditorTopbarComponent } from './editor-topbar';

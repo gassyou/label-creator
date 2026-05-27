@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { jsPDF } from 'jspdf';
-import { LabelTemplate, PrintSetting, getPaperSize, DEFAULT_PRINT_SETTING } from '../editor/models/label.models';
+import { LabelTemplate, PrintSetting, getPaperSize, DEFAULT_PRINT_SETTING } from './editor/models/editor.models';
 import { BindingResolverService } from '../editor/services/binding-resolver.service';
 import { generateBarcode, generateQRCode } from './barcode-generator';
 

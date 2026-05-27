@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { LabelElement } from '../models/label.models';
+import { LabelElement } from './models/editor.models';
 
 /**
  * Command Interface - Section 35

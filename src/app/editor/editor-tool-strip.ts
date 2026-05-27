@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { NzIconModule } from 'ng-zorro-antd/icon';
-import { EditorTool } from './models/label.models';
+import { EditorTool } from './models/editor.models';
 
 @Component({
   selector: 'app-editor-tool-strip',
