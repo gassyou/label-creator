@@ -52,7 +52,8 @@
       [jsonPreview]="jsonPreview()"
       (canvasFillChanged)="updateCanvasFill($event)"
       (canvasImageChanged)="updateCanvasImage($event)"
-      (applyCanvasImageRequested)="applyCanvasImage()"
+      (pageSizeChanged)="updateCanvasSize($event)"
+      (canvasSizeChanged)="updateCanvasDimensions($event)"
       (idChanged)="updateSelectionId($event)"
       (opacityChanged)="updateSelectionOpacity($event)"
       (fillChanged)="updateSelectionFill($event)"
@@ -65,12 +66,19 @@
       (fontSizeChanged)="updateSelectionFontSize($event)"
       (textChanged)="updateSelectionText($event)"
       (colorChanged)="updateSelectionColor($event)"
-      (bindingChanged)="updateBinding($event)"
       (barcodeFormatChanged)="updateBarcodeFormat($event)"
       (barcodeShowTextChanged)="updateBarcodeShowText($event)"
       (errorCorrectionLevelChanged)="updateErrorCorrectionLevel($event)"
       (foregroundColorChanged)="updateForegroundColor($event)"
       (backgroundColorChanged)="updateBackgroundColor($event)"
     />
+
+    @if (printSettingVisible()) {
+      <app-print-setting-dialog
+        [printSetting]="template().printSetting"
+        (settingChanged)="updatePrintSetting($event)"
+        (closed)="printSettingVisible.set(false)"
+      />
+    }
   </div>
 </section>

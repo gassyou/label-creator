@@ -23,7 +23,9 @@
       "Bash(git -C /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21 log --all --oneline -- \"src/app/editor/models/*.ts\")",
       "Bash(git -C /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21 show 1b8be56:src/app/editor/models/editor.models.ts)",
       "Bash(git -C /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21 show 1b8be56:src/app/editor/models/label.models.ts)",
-      "Bash(mkdir -p /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/commands /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/adapters /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/types)"
+      "Bash(mkdir -p /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/commands /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/adapters /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/types)",
+      "Bash(git checkout *)",
+      "Bash(npm i *)"
     ],
     "additionalDirectories": [
       "/Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor"

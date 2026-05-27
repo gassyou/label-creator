@@ -25,13 +25,14 @@ import {
 import { EditorPropertiesPanelComponent } from './editor-properties-panel';
 import { EditorTopbarComponent } from './editor-topbar';
 import { EditorToolStripComponent } from './editor-tool-strip';
+import { PrintSettingDialogComponent } from './dialogs/print-setting-dialog/print-setting-dialog';
 import { TemplateService } from '../template/template.service';
 import { LabelGeneratorService } from '../print/label-generator.service';
-import { DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
+import { PrintSetting, DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
 
 @Component({
   selector: 'app-editor',
-  imports: [FormsModule, EditorPropertiesPanelComponent, EditorTopbarComponent, EditorToolStripComponent],
+  imports: [FormsModule, EditorPropertiesPanelComponent, EditorTopbarComponent, EditorToolStripComponent, PrintSettingDialogComponent],
   providers: [EditorCanvasService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
@@ -58,7 +59,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
   readonly propsPanelVisible = computed(() => !!this.selectionState().id);
-  readonly hasSelection = computed(() => !!this.selectionState().id);
+  readonly hasSelection = computed(() => !!this.selectionState().id || this.canvasService.hasMultiSelection());
   readonly textEditorVisible = this.canvasService.textEditorVisible.asReadonly();
   readonly figureEditorVisible = this.canvasService.figureEditorVisible.asReadonly();
   readonly jsonPreview = this.canvasService.jsonPreview.asReadonly();
@@ -226,6 +227,36 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       ...t,
       label: { ...t.label, backgroundImage }
     }));
+    if (backgroundImage) {
+      this.canvasService.applyCanvasImage(backgroundImage, () => {
+        this.isDirty.set(true);
+      });
+    }
+  }
+
+  updateCanvasSize(pageSizeId: string): void {
+    const preset = PAGE_SIZE_PRESETS.find(p => p.id === pageSizeId);
+    if (!preset) return;
+
+    this.template.update((t) => ({
+      ...t,
+      label: {
+        ...t.label,
+        width: preset.widthMm,
+        height: preset.heightMm
+      }
+    }));
+  }
+
+  updateCanvasDimensions(dimensions: { width: number; height: number }): void {
+    this.template.update((t) => ({
+      ...t,
+      label: {
+        ...t.label,
+        width: dimensions.width,
+        height: dimensions.height
+      }
+    }));
   }
 
   applyCanvasImage(): void {
@@ -266,10 +297,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   updateSelectionText(text: string): void {
     this.selectionState.update((state) => ({ ...state, text }));
-  }
-
-  updateBinding(binding: string): void {
-    this.selectionState.update((state) => ({ ...state, binding }));
   }
 
   updateBarcodeFormat(format: string): void {
@@ -517,5 +544,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   openPrintSettingDialog(): void {
     this.printSettingVisible.set(true);
+  }
+
+  updatePrintSetting(printSetting: PrintSetting): void {
+    this.template.update(t => ({
+      ...t,
+      printSetting: { ...printSetting }
+    }));
   }
 }

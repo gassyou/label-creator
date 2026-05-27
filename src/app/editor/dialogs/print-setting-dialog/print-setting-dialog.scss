@@ -1,20 +1,27 @@
 .setting-row {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 
   label {
     display: block;
-    margin-bottom: 4px;
-    font-size: 14px;
+    margin-bottom: 2px;
+    font-size: 12px;
     color: #666;
+  }
+
+  nz-select,
+  nz-input-number {
+    width: 100%;
   }
 }
 
 .setting-section {
-  margin-top: 20px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
 
   h4 {
     margin: 0 0 8px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     color: #333;
   }
@@ -22,8 +29,8 @@
 
 .inline-row {
   display: flex;
-  gap: 16px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 4px;
 }
 
 .setting-field {
@@ -31,8 +38,12 @@
 
   label {
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     font-size: 12px;
     color: #888;
+  }
+
+  nz-input-number {
+    width: 100%;
   }
 }

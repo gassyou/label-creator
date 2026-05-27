@@ -5,6 +5,28 @@
       Canvas raster size: {{ canvasState().width }} × {{ canvasState().height }} px
     </p>
     <label>
+      <span>Page Size</span>
+      <select [ngModel]="pageSize()" (ngModelChange)="onPageSizeChange($event)">
+        <option value="a4-portrait">A4 Portrait (210×297 mm)</option>
+        <option value="a4-landscape">A4 Landscape (297×210 mm)</option>
+        <option value="a5-portrait">A5 Portrait (148×210 mm)</option>
+        <option value="a5-landscape">A5 Landscape (210×148 mm)</option>
+        <option value="letter-portrait">Letter Portrait (216×279 mm)</option>
+        <option value="letter-landscape">Letter Landscape (279×216 mm)</option>
+        <option value="custom">Custom</option>
+      </select>
+    </label>
+    <div class="size-display">
+      <label>
+        <span>Width (mm)</span>
+        <input type="number" [ngModel]="canvasWidth()" (ngModelChange)="onSizeChange('width', $event)" />
+      </label>
+      <label>
+        <span>Height (mm)</span>
+        <input type="number" [ngModel]="canvasHeight()" (ngModelChange)="onSizeChange('height', $event)" />
+      </label>
+    </div>
+    <label>
       <span>Background Color</span>
       <input
         type="color"
@@ -13,17 +35,22 @@
       />
     </label>
     <label>
-      <span>Background Image URL</span>
-      <input
-        type="text"
-        [ngModel]="canvasState().backgroundImage"
-        (ngModelChange)="canvasImageChanged.emit($event)"
-        placeholder="https://..."
-      />
+      <span>Background Image</span>
+      <nz-upload
+        [nzShowUploadList]="false"
+        [nzBeforeUpload]="beforeUpload"
+      >
+        <button nz-button nzType="primary" nzSize="small" type="button">
+          <span nz-icon nzType="upload"></span>
+          Upload
+        </button>
+      </nz-upload>
+      @if (canvasState().backgroundImage) {
+        <div class="bg-preview">
+          <img [src]="canvasState().backgroundImage" alt="Background preview" />
+        </div>
+      }
     </label>
-    <button type="button" class="secondary wide" (click)="applyCanvasImageRequested.emit()">
-      Apply Background
-    </button>
   </section>
 
   <section class="rail-panel">
@@ -259,18 +286,6 @@
           </label>
         }
 
-        <!-- Data Binding - for text, barcode, qrcode -->
-        @if (selectionState().type === 'text' || selectionState().type === 'barcode' || selectionState().type === 'qrcode') {
-          <label>
-            <span>Data Binding</span>
-            <input
-              type="text"
-              [ngModel]="selectionState().binding"
-              (ngModelChange)="bindingChanged.emit($event)"
-              placeholder="binding placeholder"
-            />
-          </label>
-        }
       </div>
     }
   </section>

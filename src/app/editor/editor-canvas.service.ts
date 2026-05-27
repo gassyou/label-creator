@@ -12,6 +12,7 @@ import {
 } from 'fabric';
 import { DEFAULT_SELECTION_STATE, LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, EditorSelectionState, ElementType } from './models/editor.models';
 import { Label, millimetersToPixels } from './models/label.models';
+import QRCode from 'qrcode';
 
 
 @Injectable()
@@ -193,7 +194,9 @@ export class EditorCanvasService {
       throw new Error('Canvas not initialized');
     }
 
-    const previewValue = bindingValue || '${qrcode}';
+    // If no binding value or it's a placeholder, use preview value
+    const hasRealValue = bindingValue && !bindingValue.startsWith('${');
+
     const qrElement: QRCodeElement = {
       type: 'qrcode',
       id: this.randomId(),
@@ -201,14 +204,19 @@ export class EditorCanvasService {
       y: 24,
       width: 100,
       height: 100,
-      value: previewValue,
+      value: bindingValue || '',
       errorCorrectionLevel: 'M',
       foregroundColor: '#000000',
       backgroundColor: '#ffffff'
     };
 
-    // Use FabricImage with custom properties for barcode/qrcode
-    const qrDataUrl = this.generateQRCodeDataUrl(previewValue, 100);
+    // Generate QR code image - only if has real value
+    let qrDataUrl: string;
+    if (hasRealValue) {
+      qrDataUrl = this.generateQRCodeDataUrl(bindingValue!, 100);
+    } else {
+      qrDataUrl = this.createPlaceholderDataUrl('QR', 100);
+    }
 
     const img = await FabricImage.fromURL(qrDataUrl);
     img.set({
@@ -220,7 +228,7 @@ export class EditorCanvasService {
 
     // Set custom properties for barcode/qrcode
     (img as any).elementType = 'qrcode';
-    (img as any).bindingValue = previewValue;
+    (img as any).bindingValue = bindingValue || '';
     (img as any).errorCorrectionLevel = 'M';
     (img as any).foregroundColor = '#000000';
     (img as any).backgroundColor = '#ffffff';
@@ -228,18 +236,18 @@ export class EditorCanvasService {
     // Extend toObject to persist these properties
     this.extendWithBarcodeProperties(img, {
       elementType: 'qrcode',
-      bindingValue: previewValue,
+      bindingValue: bindingValue || '',
       errorCorrectionLevel: 'M',
       foregroundColor: '#000000',
       backgroundColor: '#ffffff'
     });
 
+    // Register BEFORE adding to canvas so selection can find it
+    this.elementRegistry.set(qrElement.id, qrElement);
+
     this.extend(img, qrElement.id);
     this.canvas.add(img as any);
     this.selectItemAfterAdded(img as any);
-
-    // Register AFTER adding to canvas
-    this.elementRegistry.set(qrElement.id, qrElement);
 
     return qrElement;
   }
@@ -249,7 +257,9 @@ export class EditorCanvasService {
       throw new Error('Canvas not initialized');
     }
 
-    const previewValue = bindingValue || '${barcode}';
+    // If no binding value or it's a placeholder, use preview value
+    const hasRealValue = bindingValue && !bindingValue.startsWith('${');
+
     const barcodeElement: BarcodeElement = {
       type: 'barcode',
       id: this.randomId(),
@@ -258,12 +268,17 @@ export class EditorCanvasService {
       width: 200,
       height: 80,
       format,
-      value: previewValue,
+      value: bindingValue || '',
       showText: true
     };
 
-    // Use FabricImage with custom properties for barcode
-    const barcodeDataUrl = this.generateBarcodeDataUrl(previewValue, format);
+    // Generate barcode image - only if has real value
+    let barcodeDataUrl: string;
+    if (hasRealValue) {
+      barcodeDataUrl = this.generateBarcodeDataUrl(bindingValue!, format);
+    } else {
+      barcodeDataUrl = this.createPlaceholderDataUrl('BC', 200);
+    }
 
     const img = await FabricImage.fromURL(barcodeDataUrl);
     img.set({
@@ -275,24 +290,24 @@ export class EditorCanvasService {
 
     // Set custom properties
     (img as any).elementType = 'barcode';
-    (img as any).bindingValue = previewValue;
+    (img as any).bindingValue = bindingValue || '';
     (img as any).barcodeFormat = format;
     (img as any).showText = true;
 
     // Extend toObject
     this.extendWithBarcodeProperties(img, {
       elementType: 'barcode',
-      bindingValue: previewValue,
+      bindingValue: bindingValue || '',
       barcodeFormat: format,
       showText: true
     });
 
+    // Register BEFORE adding to canvas so selection can find it
+    this.elementRegistry.set(barcodeElement.id, barcodeElement);
+
     this.extend(img, barcodeElement.id);
     this.canvas.add(img as any);
     this.selectItemAfterAdded(img as any);
-
-    // Register AFTER adding to canvas
-    this.elementRegistry.set(barcodeElement.id, barcodeElement);
 
     return barcodeElement;
   }
@@ -633,6 +648,15 @@ export class EditorCanvasService {
       return { ...DEFAULT_SELECTION_STATE };
     }
 
+    // Handle multi-selection (ActiveSelection)
+    if (object.type?.toLowerCase() === 'activeselection') {
+      return {
+        ...DEFAULT_SELECTION_STATE,
+        id: 'multi-select',
+        type: undefined
+      };
+    }
+
     const decorations = [
       object.get('underline') ? 'underline' : '',
       object.get('overline') ? 'overline' : '',
@@ -842,11 +866,24 @@ export class EditorCanvasService {
     const canvasHeight = this.canvas?.height ?? 0;
 
     // Normalize all objects to have originX='left' and originY='top'
-    // This ensures left/top represents the actual bounding box edges
+    // while preserving their visual position
     objects.forEach(obj => {
+      const currentLeft = obj.left ?? 0;
+      const currentTop = obj.top ?? 0;
+      const width = (obj.width ?? 0) * (obj.scaleX ?? 1);
+      const height = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+      // Calculate visual left/top based on current origin
+      const visualLeft = obj.originX === 'center' ? currentLeft - width / 2 :
+                         obj.originX === 'right' ? currentLeft - width : currentLeft;
+      const visualTop = obj.originY === 'center' ? currentTop - height / 2 :
+                        obj.originY === 'bottom' ? currentTop - height : currentTop;
+
       obj.set({
         originX: 'left',
-        originY: 'top'
+        originY: 'top',
+        left: visualLeft,
+        top: visualTop
       });
       obj.setCoords();
     });
@@ -1040,6 +1077,7 @@ export class EditorCanvasService {
   // ============================================================
 
   private handleSelection(object: any): void {
+    console.log('[handleSelection] object:', object?.type, object?.type === 'activeSelection' ? '(MULTI)' : '');
     if (!object) {
       this.selected.set(null);
       this.textEditorVisible.set(false);
@@ -1047,24 +1085,39 @@ export class EditorCanvasService {
       return;
     }
 
+    // Check if this is an ActiveSelection (multi-select)
+    const isMultiSelect = object.type?.toLowerCase() === 'activeselection';
+
     object.set({
       hasRotatingPoint: true,
       transparentCorners: false,
       cornerColor: 'rgba(37, 99, 235, 0.7)'
     });
 
-    const id = this.getObjectId(object);
-    const element = this.elementRegistry.get(id) ?? null;
-    this.selected.set(element);
+    if (isMultiSelect) {
+      // For multi-selection, set a marker that selection exists
+      const dummyElement: LabelElement = {
+        type: 'rect',
+        id: 'multi-select-marker',
+        x: 0, y: 0, width: 0, height: 0
+      };
+      this.selected.set(dummyElement);
+      this.textEditorVisible.set(false);
+      this.figureEditorVisible.set(false);
+    } else {
+      const id = this.getObjectId(object);
+      const element = this.elementRegistry.get(id) ?? null;
+      this.selected.set(element);
 
-    this.textEditorVisible.set(false);
-    this.figureEditorVisible.set(false);
+      this.textEditorVisible.set(false);
+      this.figureEditorVisible.set(false);
 
-    const type = object.type;
-    if (type === 'rect' || type === 'circle' || type === 'triangle' || type === 'line') {
-      this.figureEditorVisible.set(true);
-    } else if (type === 'i-text' || type === 'textbox') {
-      this.textEditorVisible.set(true);
+      const type = object.type;
+      if (type === 'rect' || type === 'circle' || type === 'triangle' || type === 'line') {
+        this.figureEditorVisible.set(true);
+      } else if (type === 'i-text' || type === 'textbox') {
+        this.textEditorVisible.set(true);
+      }
     }
   }
 
@@ -1125,9 +1178,12 @@ export class EditorCanvasService {
 
   generateQRCodeDataUrl(value: string, size: number): string {
     try {
-      // Use qrcode library to generate SVG
-      const svg = (window as any).qrcode.generateSVG(value, { width: size });
-      return 'data:image/svg+xml;base64,' + btoa(svg);
+      // Use qrcode library to generate QR code to canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      (QRCode as any).toCanvas(canvas, value, { width: size });
+      return canvas.toDataURL('image/png');
     } catch (e) {
       console.error('QR code generation failed:', e);
       return this.createPlaceholderDataUrl('QR', size);
@@ -1136,8 +1192,10 @@ export class EditorCanvasService {
 
   generateBarcodeDataUrl(value: string, format: string): string {
     try {
+      // Use jsbarcode library to generate barcode
+      const JsBarcode = (window as any).JsBarcode;
       const canvas = document.createElement('canvas');
-      (window as any).JsBarcode(canvas, value, { format });
+      JsBarcode(canvas, value, { format });
       return canvas.toDataURL('image/png');
     } catch (e) {
       console.error('Barcode generation failed:', e);

@@ -24,6 +24,17 @@
       </nz-radio-group>
     </div>
 
+    <div class="inline-row">
+      <div class="setting-field">
+        <label>纸张宽度 (mm)</label>
+        <nz-input-number [(ngModel)]="printSetting().customPaperWidth" [nzMin]="50" [nzMax]="500" [nzStep]="1"></nz-input-number>
+      </div>
+      <div class="setting-field">
+        <label>纸张高度 (mm)</label>
+        <nz-input-number [(ngModel)]="printSetting().customPaperHeight" [nzMin]="50" [nzMax]="500" [nzStep]="1"></nz-input-number>
+      </div>
+    </div>
+
     <div class="setting-section">
       <h4>页边距 (mm)</h4>
       <div class="inline-row">
