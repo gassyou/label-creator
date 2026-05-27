@@ -105,9 +105,10 @@ export class PdfLabelGenerator implements LabelGenerator {
     const widthPx = millimetersToPixels(label.width);
     const heightPx = millimetersToPixels(label.height);
 
+    // Create canvas at label physical pixels
     const element = document.createElement('canvas');
-    element.width = widthPx * multiplier;
-    element.height = heightPx * multiplier;
+    element.width = widthPx;
+    element.height = heightPx;
 
     const canvas = new Canvas(element, {
       selection: false,
@@ -116,7 +117,6 @@ export class PdfLabelGenerator implements LabelGenerator {
       height: heightPx
     });
 
-    canvas.setDimensions({ width: widthPx, height: heightPx });
     canvas.backgroundColor = label.backgroundColor;
 
     if (label.backgroundImage) {
@@ -134,10 +134,16 @@ export class PdfLabelGenerator implements LabelGenerator {
 
     if (label.canvasJson) {
       await canvas.loadFromJSON(label.canvasJson);
-      canvas.setDimensions({ width: widthPx, height: heightPx });
+
+      // Reset viewport transform to ensure correct positioning
+      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      canvas.forEachObject((obj) => {
+        obj.setCoords();
+      });
     }
 
     canvas.requestRenderAll();
+    // multiplier enhances resolution for PDF output
     const png = canvas.toDataURL({ format: 'png', multiplier });
     canvas.dispose();
     return png;
