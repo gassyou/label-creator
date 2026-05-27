@@ -69,8 +69,6 @@ export type EditorTool = 'select' | 'text' | 'square' | 'circle' | 'triangle' | 
 // ============================================================
 import { millimetersToPixels } from './template.models';
 
-const PX_PER_MM = 96 / 25.4;
-
 export function createCanvasState(widthMm: number, heightMm: number): EditorCanvasState {
   return {
     width: millimetersToPixels(widthMm),

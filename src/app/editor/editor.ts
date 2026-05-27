@@ -56,7 +56,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly message = inject(NzMessageService);
 
   readonly activeTool = signal<EditorTool>('select');
-  readonly canvasState = signal<EditorCanvasState>(DEFAULT_CANVAS_STATE);
   readonly selectionState = signal<EditorSelectionState>({ ...DEFAULT_SELECTION_STATE });
   readonly templateName = signal('未命名');
   readonly isDirty = signal(false);
@@ -82,6 +81,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     canvasJson: '',
     printSetting: { ...DEFAULT_PRINT_SETTING }
   });
+
+  /** Canvas state derived from template (px) - auto-synced with template */
+  readonly canvasState = computed(() => ({
+    width: millimetersToPixels(this.template().width),
+    height: millimetersToPixels(this.template().height),
+    backgroundColor: this.template().backgroundColor,
+    backgroundImage: this.template().backgroundImage || ''
+  }));
 
   textString = '';
   private hasCanvasInitialized = false;
@@ -207,12 +214,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   updateCanvasFill(backgroundColor: string): void {
-    this.canvasState.update((state) => ({ ...state, backgroundColor }));
-    this.canvasService.applyCanvasFill(backgroundColor, this.canvasState().backgroundImage || '');
+    this.template.update((t) => ({ ...t, backgroundColor }));
+    this.canvasService.applyCanvasFill(backgroundColor, this.template().backgroundImage || '');
   }
 
   updateCanvasImage(backgroundImage: string): void {
-    this.canvasState.update((state) => ({ ...state, backgroundImage }));
+    this.template.update((t) => ({ ...t, backgroundImage }));
   }
 
   applyCanvasImage(): void {
@@ -416,22 +423,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         this.templateName.set(template.name || '未命名');
         const labelTemplate = template.document as LabelTemplate;
         this.template.set(labelTemplate);
-        const widthMm = labelTemplate.width || 210;
-        const heightMm = labelTemplate.height || 297;
-        this.canvasState.set({
-          width: millimetersToPixels(widthMm),
-          height: millimetersToPixels(heightMm),
-          backgroundColor: labelTemplate.backgroundColor || '#ffffff',
-          backgroundImage: labelTemplate.backgroundImage
-        });
         if (labelTemplate.canvasJson) {
           await this.canvasService.loadPage({
             id: 'loaded-page',
             name: 'Loaded Page',
-            widthMm,
-            heightMm,
-            backgroundColor: labelTemplate.backgroundColor || '#ffffff',
-            backgroundImage: labelTemplate.backgroundImage,
             canvasState: this.canvasState(),
             canvasJson: labelTemplate.canvasJson
           });
@@ -471,22 +466,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       const labelTemplate = JSON.parse(saved) as LabelTemplate;
       this.template.set(labelTemplate);
-      const widthMm = labelTemplate.width || 210;
-      const heightMm = labelTemplate.height || 297;
-      this.canvasState.set({
-        width: millimetersToPixels(widthMm),
-        height: millimetersToPixels(heightMm),
-        backgroundColor: labelTemplate.backgroundColor || '#ffffff',
-        backgroundImage: labelTemplate.backgroundImage
-      });
       if (labelTemplate.canvasJson) {
         await this.canvasService.loadPage({
           id: 'loaded-page',
           name: 'Loaded Page',
-          widthMm,
-          heightMm,
-          backgroundColor: labelTemplate.backgroundColor || '#ffffff',
-          backgroundImage: labelTemplate.backgroundImage,
           canvasState: this.canvasState(),
           canvasJson: labelTemplate.canvasJson
         });
