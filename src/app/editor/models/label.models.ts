@@ -30,6 +30,7 @@ export const DEFAULT_PRINT_SETTING: PrintSetting = {
 
 /**
  * 标签数据
+ * 用于存储和生成 PDF，尺寸单位为毫米
  */
 export interface Label {
   id: string;

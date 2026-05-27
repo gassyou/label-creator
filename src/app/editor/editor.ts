@@ -66,19 +66,22 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly template = signal<LabelTemplate>({
     id: '',
     name: '未命名',
-    width: 210,
-    height: 297,
-    backgroundColor: '#ffffff',
-    canvasJson: '',
+    label: {
+      id: '',
+      width: 210,
+      height: 297,
+      backgroundColor: '#ffffff',
+      canvasJson: ''
+    },
     printSetting: { ...DEFAULT_PRINT_SETTING }
   });
 
   /** Canvas state derived from template (px) - auto-synced with template */
   readonly canvasState = computed(() => ({
-    width: millimetersToPixels(this.template().width),
-    height: millimetersToPixels(this.template().height),
-    backgroundColor: this.template().backgroundColor,
-    backgroundImage: this.template().backgroundImage || ''
+    width: millimetersToPixels(this.template().label.width),
+    height: millimetersToPixels(this.template().label.height),
+    backgroundColor: this.template().label.backgroundColor,
+    backgroundImage: this.template().label.backgroundImage || ''
   }));
 
   textString = '';
@@ -205,12 +208,18 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   updateCanvasFill(backgroundColor: string): void {
-    this.template.update((t) => ({ ...t, backgroundColor }));
-    this.canvasService.applyCanvasFill(backgroundColor, this.template().backgroundImage || '');
+    this.template.update((t) => ({
+      ...t,
+      label: { ...t.label, backgroundColor }
+    }));
+    this.canvasService.applyCanvasFill(backgroundColor, this.template().label.backgroundImage || '');
   }
 
   updateCanvasImage(backgroundImage: string): void {
-    this.template.update((t) => ({ ...t, backgroundImage }));
+    this.template.update((t) => ({
+      ...t,
+      label: { ...t.label, backgroundImage }
+    }));
   }
 
   applyCanvasImage(): void {
@@ -412,15 +421,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
           return;
         }
         this.templateName.set(template.name || '未命名');
-        const labelTemplate = template.document as LabelTemplate;
+        const labelTemplate = template as unknown as LabelTemplate;
         this.template.set(labelTemplate);
-        if (labelTemplate.canvasJson) {
-          await this.canvasService.loadPage({
-            id: 'loaded-page',
-            name: 'Loaded Page',
-            canvasState: this.canvasState(),
-            canvasJson: labelTemplate.canvasJson
-          });
+        if (labelTemplate.label?.canvasJson) {
+          await this.canvasService.loadPage(labelTemplate.label);
         }
       },
       error: () => this.message.error('加载模板失败')
@@ -460,13 +464,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       const labelTemplate = JSON.parse(saved) as LabelTemplate;
       this.template.set(labelTemplate);
-      if (labelTemplate.canvasJson) {
-        await this.canvasService.loadPage({
-          id: 'loaded-page',
-          name: 'Loaded Page',
-          canvasState: this.canvasState(),
-          canvasJson: labelTemplate.canvasJson
-        });
+      if (labelTemplate.label.canvasJson) {
+        await this.canvasService.loadPage(labelTemplate.label);
       }
     } catch (e) {
       console.error('Failed to load canvas from JSON:', e);
@@ -500,8 +499,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       canvasJson: labelTemplate.label.canvasJson
     };
 
-    const generatorService = new LabelGeneratorService(labelTemplate.printSetting);
-    const blob = await generatorService.generatePdf([labelData]);
+    const generatorService = new LabelGeneratorService();
+    const blob = await generatorService.generatePdf([labelData], labelTemplate.printSetting);
     generatorService.download(blob, 'label-document.pdf');
   }
 

@@ -4,12 +4,14 @@ import {
   Circle,
   FabricImage,
   IText,
+  Line,
   Pattern,
   Rect,
   Triangle,
   util as fabricUtil
 } from 'fabric';
 import { DEFAULT_SELECTION_STATE, LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, EditorSelectionState, ElementType } from './models/editor.models';
+import { Label, millimetersToPixels } from './models/label.models';
 
 
 @Injectable()
@@ -167,10 +169,8 @@ export class EditorCanvasService {
           id: this.randomId(),
           x: 24,
           y: 24,
-          x1: 24,
-          y1: 24,
-          x2: 124,
-          y2: 24,
+          width: 100,
+          height: 2,
           stroke: '#000000',
           strokeWidth: 2
         } as LineElement;
@@ -235,8 +235,8 @@ export class EditorCanvasService {
     });
 
     this.extend(img, qrElement.id);
-    this.canvas.add(img);
-    this.selectItemAfterAdded(img);
+    this.canvas.add(img as any);
+    this.selectItemAfterAdded(img as any);
 
     // Register AFTER adding to canvas
     this.elementRegistry.set(qrElement.id, qrElement);
@@ -288,8 +288,8 @@ export class EditorCanvasService {
     });
 
     this.extend(img, barcodeElement.id);
-    this.canvas.add(img);
-    this.selectItemAfterAdded(img);
+    this.canvas.add(img as any);
+    this.selectItemAfterAdded(img as any);
 
     // Register AFTER adding to canvas
     this.elementRegistry.set(barcodeElement.id, barcodeElement);
@@ -314,8 +314,8 @@ export class EditorCanvasService {
       image.scaleToWidth(220);
       image.scaleToHeight(220);
       this.extend(image, this.randomId());
-      this.canvas?.add(image);
-      this.selectItemAfterAdded(image);
+      this.canvas?.add(image as any);
+      this.selectItemAfterAdded(image as any);
     });
   }
 
@@ -554,28 +554,31 @@ export class EditorCanvasService {
     return JSON.stringify(template, null, 2);
   }
 
-  async loadPage(page: LabelPage): Promise<void> {
+  async loadPage(label: Label): Promise<void> {
     if (!this.canvas) {
       return;
     }
 
-    const canvasState = page.canvasState ?? { width: 794, height: 1123, backgroundColor: '#ffffff' };
+    // 将毫米转换为像素
+    const widthPx = millimetersToPixels(label.width);
+    const heightPx = millimetersToPixels(label.height);
+
     this.hydrating = true;
     this.canvas.clear();
     this.elementRegistry.clear();
     this.canvas.setDimensions({
-      width: canvasState.width,
-      height: canvasState.height
+      width: widthPx,
+      height: heightPx
     });
 
-    if (canvasState.backgroundImage) {
-      await this.applyCanvasImageToCanvas(canvasState.backgroundImage);
+    if (label.backgroundImage) {
+      await this.applyCanvasImageToCanvas(label.backgroundImage);
     } else {
-      this.canvas.backgroundColor = canvasState.backgroundColor;
+      this.canvas.backgroundColor = label.backgroundColor;
     }
 
-    if (page.canvasJson) {
-      await this.canvas.loadFromJSON(page.canvasJson);
+    if (label.canvasJson) {
+      await this.canvas.loadFromJSON(label.canvasJson);
 
       // Rebuild element registry and extend objects with IDs after loading
       let index = 0;
@@ -1164,14 +1167,15 @@ export class EditorCanvasService {
   }
 
   private extendWithBarcodeProperties(obj: any, props: Record<string, any>): void {
-    const originalToObject = obj.toObject;
-    const objRef = obj;
-    obj.toObject = () => {
-      return fabricUtil.object.extend(originalToObject.call(objRef), props);
-    };
-
-    // Set instance properties
+    // Custom properties are now typed in fabric.custom.d.ts
+    // Just assign them directly - Fabric handles serialization via toObject override
     Object.assign(obj, props);
+
+    const originalToObject = obj.toObject;
+    obj.toObject = function(this: any) {
+      const result = originalToObject.call(this);
+      return { ...result, ...props };
+    };
   }
 
   generateQRCodeDataUrl(value: string, size: number): string {
@@ -1426,13 +1430,10 @@ export class EditorCanvasService {
         });
       case 'line': {
         const lineEl = element as LineElement;
-        const line = new Line([0, 0, lineEl.x2 - lineEl.x1, lineEl.y2 - lineEl.y1], {
-          left: lineEl.x1,
-          top: lineEl.y1,
+        // Line uses x, y as start point and width as horizontal length
+        const line = new Line([lineEl.x, lineEl.y, lineEl.x + lineEl.width, lineEl.y], {
           stroke: lineEl.stroke || '#000000',
-          strokeWidth: lineEl.strokeWidth || 1,
-          originX: 'left',
-          originY: 'top'
+          strokeWidth: lineEl.strokeWidth || 1
         });
         return line;
       }

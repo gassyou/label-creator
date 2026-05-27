@@ -16,7 +16,7 @@ import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzPopoverModule } from 'ng-zorro-antd/popover';
 import { LabelGenerationService } from './label-generation.service';
-import { StoredTemplate } from '../template/template.storage';
+import { LabelTemplate } from '../editor/models/label.models';
 import {
   BatchInfo,
   GeneratedLabel,
@@ -443,7 +443,7 @@ export class GenerateLabelDialogComponent implements OnInit {
     return this._visibleSignal();
   }
 
-  @Input() template: StoredTemplate | null = null;
+  @Input() template: LabelTemplate | null = null;
   @Output() labelsGenerated = new EventEmitter<GeneratedLabel[]>();
   @Output() dialogClosed = new EventEmitter<void>();
 

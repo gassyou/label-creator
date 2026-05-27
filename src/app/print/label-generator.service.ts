@@ -41,24 +41,24 @@ export class LabelGeneratorService {
   /**
    * 生成 PDF
    */
-  async generatePdf(labels: Label[], options?: PdfGenerateOptions): Promise<Blob> {
-    const generator = this.getGenerator('pdf');
+  async generatePdf(labels: Label[], printSetting: PrintSetting, options?: PdfGenerateOptions): Promise<Blob> {
+    const generator = this.getGenerator('pdf', printSetting);
     return generator.generate(labels, options) as Promise<Blob>;
   }
 
   /**
    * 生成 PNG
    */
-  async generatePng(labels: Label[], options?: PngGenerateOptions): Promise<Blob> {
-    const generator = this.getGenerator('png');
+  async generatePng(labels: Label[], printSetting: PrintSetting, options?: PngGenerateOptions): Promise<Blob> {
+    const generator = this.getGenerator('png', printSetting);
     return generator.generate(labels, options) as Promise<Blob>;
   }
 
   /**
    * 生成 SVG
    */
-  async generateSvg(labels: Label[], options?: SvgGenerateOptions): Promise<Blob | string> {
-    const generator = this.getGenerator('svg');
+  async generateSvg(labels: Label[], printSetting: PrintSetting, options?: SvgGenerateOptions): Promise<Blob | string> {
+    const generator = this.getGenerator('svg', printSetting);
     return generator.generate(labels, options);
   }
 
