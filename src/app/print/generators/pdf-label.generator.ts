@@ -26,7 +26,8 @@ export class PdfLabelGenerator implements LabelGenerator {
       labels[0].height
     );
 
-    const orientation = this.getOrientation(options?.orientation, labels[0].width, labels[0].height);
+    const orientation = this.printSetting.orientation;
+
     const pdf = new jsPDF({
       orientation,
       unit: 'mm',
@@ -37,21 +38,24 @@ export class PdfLabelGenerator implements LabelGenerator {
     const pageCount = PrintLayoutCalculator.getPageCount(labels.length, layout);
 
     for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+      // 添加新页面（第一页已经创建）
+      if (pageIndex > 0) {
+        pdf.addPage([layout.paperWidth, layout.paperHeight], orientation);
+      }
+
       const pageLabels = this.getPageLabels(pageIndex, labels, layout);
 
       for (let i = 0; i < pageLabels.length; i++) {
         const label = pageLabels[i];
         const pageImage = await this.renderLabelToPng(label, multiplier);
 
-        if (pageIndex > 0 || i > 0) {
-          pdf.addPage([layout.paperWidth, layout.paperHeight], orientation);
-        }
+        const position = PrintLayoutCalculator.getPosition(i, layout);
 
         pdf.addImage(
           pageImage,
           'PNG',
-          layout.margins.left,
-          layout.margins.top,
+          position.x,
+          position.y,
           layout.labelWidth,
           layout.labelHeight,
           `label-${pageIndex}-${i}`,
@@ -110,8 +114,6 @@ export class PdfLabelGenerator implements LabelGenerator {
     canvas.setDimensions({ width: widthPx, height: heightPx });
     canvas.backgroundColor = label.backgroundColor;
 
-    console.log('[PDF renderLabelToPng] backgroundImage:', label.backgroundImage?.substring(0, 50));
-
     if (label.backgroundImage) {
       try {
         const bgImg = await FabricImage.fromURL(label.backgroundImage);
@@ -121,7 +123,7 @@ export class PdfLabelGenerator implements LabelGenerator {
         });
         canvas.backgroundColor = pattern;
       } catch (err) {
-        console.error('[PDF renderLabelToPng] failed to load background image:', err);
+        console.error('Failed to load background image:', err);
       }
     }
 

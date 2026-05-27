@@ -1,5 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Label } from '../editor/models/label.models';
+import QRCode from 'qrcode';
+import JsBarcode from 'jsbarcode';
 
 /**
  * 业务数据（键值对）
@@ -48,19 +50,22 @@ export class LabelDataBindingService {
     }
 
     const objects = parsed.objects || [];
-    const updatedObjects = objects.map((obj: any) => {
+    const updatedObjects: any[] = [];
+
+    for (const obj of objects) {
       // 文本元素：替换 ${...} 占位符
-      if (obj.type === 'i-text' || obj.type === 'text') {
-        return this.bindTextObject(obj, data, unbound);
+      if (obj.type === 'text' || obj.type === 'Textbox') {
+        updatedObjects.push(this.bindTextObject(obj, data, unbound));
       }
-
       // 图片元素（barcode / qrcode）：替换为生成的图片
-      if (obj.type === 'image' && obj.elementType) {
-        return this.bindImageObject(obj, data, unbound);
+      else if (obj.type?.toLowerCase() === 'image' && obj.elementType) {
+        const bound = await this.bindImageObjectAsync(obj, data, unbound);
+        updatedObjects.push(bound);
       }
-
-      return obj;
-    });
+      else {
+        updatedObjects.push(obj);
+      }
+    }
 
     parsed.objects = updatedObjects;
     const boundCanvasJson = JSON.stringify(parsed);
@@ -95,7 +100,7 @@ export class LabelDataBindingService {
    * 绑定图片对象（barcode / qrcode）
    * 根据元素的宽高（mm）生成对应尺寸的 SVG/条形码
    */
-  private bindImageObject(obj: any, data: BindingData, unbound: string[]): any {
+  private async bindImageObjectAsync(obj: any, data: BindingData, unbound: string[]): Promise<any> {
     const elementType = obj.elementType;
 
     if (!elementType) return obj;
@@ -129,8 +134,12 @@ export class LabelDataBindingService {
     }
 
     if (elementType === 'qrcode') {
+      if (!resolvedValue) {
+        return obj;
+      }
+
       const size = Math.min(widthPx, heightPx);
-      const dataUrl = generateQRCodeSVG(resolvedValue, size);
+      const dataUrl = await generateQRCodeSVG(resolvedValue, size);
 
       return { ...obj, src: dataUrl };
     }
@@ -173,14 +182,12 @@ function generateBarcodeSVG(
   showText: boolean,
   color: string
 ): string {
-  const JsBarcode = (window as any).JsBarcode;
-  if (!JsBarcode) {
-    console.warn('JsBarcode not loaded');
+  if (!value) {
     return createPlaceholder(value, 'BC', 80);
   }
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    JsBarcode(svg, value, {
+    (JsBarcode as any)(svg, value, {
       format: format,
       width: 1,
       height: height,
@@ -200,19 +207,19 @@ function generateBarcodeSVG(
 /**
  * 生成 QR 码（SVG base64）
  */
-function generateQRCodeSVG(
+async function generateQRCodeSVG(
   value: string,
   size: number
-): string {
+): Promise<string> {
+  if (!value) {
+    return createPlaceholder(value, 'QR', size);
+  }
   try {
-    const qr = (window as any).qrcode;
-    if (!qr) {
-      console.warn('qrcode not loaded');
-      return createPlaceholder(value, 'QR', size);
-    }
-
-    const svg = qr.generateSVG(value, { width: size });
-    return 'data:image/svg+xml;base64,' + btoa(svg);
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    await (QRCode as any).toCanvas(canvas, value, { width: size });
+    return canvas.toDataURL('image/png');
   } catch (e) {
     console.error('QR code generation failed:', e);
     return createPlaceholder(value, 'QR', size);
