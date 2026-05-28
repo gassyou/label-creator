@@ -616,7 +616,6 @@ export class GenerateLabelDialogComponent implements OnInit {
     this.isGenerating.set(true);
     try {
       const result = this.labelGenerationService.generateLabels(input);
-      console.log('生成的标签数据:', JSON.stringify(result.labels, null, 2));
       this.message.success(`成功生成${result.totalLabels}条标签数据`);
       this.labelsGenerated.emit(result.labels);
       this.handleCancel();
