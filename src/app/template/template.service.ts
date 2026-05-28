@@ -41,32 +41,20 @@ export class TemplateService {
     id?: string
   ): Observable<LabelTemplate> {
     const now = new Date().toISOString();
-    const templateId = id || `tpl-${Date.now()}`;
-
     return from(this.generateThumbnailAsync(template.label)).pipe(
       map(generatedThumbnail => {
         const storedTemplate: LabelTemplate = {
-          id: templateId,
+          id,
           name,
           label:template.label,
           printSetting: template.printSetting,
           thumbnail: thumbnail || generatedThumbnail,
-          createdAt: now,
+          createdAt: id ? template.createdAt : now,
           updatedAt: now
         };
         return storedTemplate;
       }),
-      switchMap(stored =>
-        this.storage.getById(templateId).pipe(
-          map(existing => {
-            if (existing) {
-              stored.createdAt = existing.createdAt;
-            }
-            return stored;
-          }),
-          switchMap(t => this.storage.save(t).pipe(map(() => t)))
-        )
-      )
+      switchMap(stored => this.storage.save(stored).pipe(map(() => stored)) )
     );
   }
 

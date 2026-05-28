@@ -478,7 +478,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.templateService.saveTemplate(name, labelTemplate, undefined, this.templateId ?? undefined).subscribe({
       next: (template) => {
-        this.templateId = template.id;
         this.isDirty.set(false);
         this.message.success('保存成功');
       },
@@ -525,7 +524,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private buildLabelTemplate(): LabelTemplate {
     return {
-      id: this.templateId || `tpl-${Date.now()}`,
+      id: this.templateId || undefined,
       name: this.templateName(),
       label: {
         id: `label-${Date.now()}`,

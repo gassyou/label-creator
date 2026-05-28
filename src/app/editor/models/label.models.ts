@@ -48,7 +48,7 @@ export interface Label {
  * 标签模板
  */
 export interface LabelTemplate {
-  id: string;
+  id?: string;
   name: string;
   label: Label;
   printSetting: PrintSetting;

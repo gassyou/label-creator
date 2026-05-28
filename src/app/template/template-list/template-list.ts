@@ -335,7 +335,7 @@ export class TemplateListComponent {
    * 删除模板
    */
   private deleteTemplate(template: LabelTemplate): void {
-    this.templateService.deleteTemplate(template.id).subscribe({
+    this.templateService.deleteTemplate(template.id!).subscribe({
       next: () => {
         this.message.success('删除成功');
         this.loadTemplates();
