@@ -96,7 +96,7 @@ export class LocalStorageTemplateService implements TemplateStorageService {
  */
 @Injectable({ providedIn: 'root' })
 export class HttpTemplateService implements TemplateStorageService {
-  private readonly API_URL = 'http://localhost:5000/LabelTemplate';
+  private readonly API_URL = 'http://192.168.3.29/webapi2/api/LabelTemplate';
   private readonly http = inject(HttpClient);
 
   getAll(): Observable<LabelTemplate[]> {
