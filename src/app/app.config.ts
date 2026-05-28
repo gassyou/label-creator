@@ -32,7 +32,7 @@ import {
 } from '@ant-design/icons-angular/icons';
 
 import { routes } from './app.routes';
-import { TemplateStorageService, LocalStorageTemplateService } from './template/template.storage';
+import { TemplateStorageService, LocalStorageTemplateService, HttpTemplateService } from './template/template.storage';
 
 registerLocaleData(zh);
 
@@ -67,6 +67,6 @@ export const appConfig: ApplicationConfig = {
       FileImageOutlineIcon
     ]),
     provideNzI18n(zh_CN),
-    { provide: TemplateStorageService, useClass: LocalStorageTemplateService }
+    { provide: TemplateStorageService, useClass: HttpTemplateService }
   ]
 };

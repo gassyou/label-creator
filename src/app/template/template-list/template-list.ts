@@ -236,7 +236,7 @@ export class TemplateListComponent {
    */
   loadTemplates(): void {
     this.templateService.getTemplates().subscribe({
-      next: (templates) => this.templates.set(templates),
+      next: (templates) => {console.log(templates);this.templates.set(templates)},
       error: (err) => this.message.error('加载模板失败')
     });
   }

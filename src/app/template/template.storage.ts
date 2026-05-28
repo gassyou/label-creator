@@ -1,6 +1,8 @@
 import { Injectable } from '@angular/core';
-import { Observable, from } from 'rxjs';
+import { Observable, from, map } from 'rxjs';
 import { LabelTemplate } from '../editor/models/label.models';
+import { inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 
 /**
  * 模板存储服务接口
@@ -85,5 +87,31 @@ export class LocalStorageTemplateService implements TemplateStorageService {
       templates
     };
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+  }
+}
+
+/**
+ * HTTP 模板存储服务实现
+ * 调用后端 API 实现模板的增删改查
+ */
+@Injectable({ providedIn: 'root' })
+export class HttpTemplateService implements TemplateStorageService {
+  private readonly API_URL = 'http://localhost:5000/LabelTemplate';
+  private readonly http = inject(HttpClient);
+
+  getAll(): Observable<LabelTemplate[]> {
+    return this.http.get<any>(`${this.API_URL}/GetAll`).pipe(map(result => result['data'] as LabelTemplate[]));
+  }
+
+  getById(id: string): Observable<LabelTemplate | null> {
+    return this.http.get<any>(`${this.API_URL}/GetById?id=${id}`).pipe(map(result => result['data'] as LabelTemplate));
+  }
+
+  save(template: LabelTemplate): Observable<void> {
+    return this.http.post<void>(`${this.API_URL}/Save`, template);
+  }
+
+  delete(id: string): Observable<void> {
+    return this.http.post<void>(`${this.API_URL}/Delete?id=${id}`, {});
   }
 }
