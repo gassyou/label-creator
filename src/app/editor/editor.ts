@@ -29,6 +29,7 @@ import { PrintSettingDialogComponent } from './dialogs/print-setting-dialog/prin
 import { TemplateService } from '../template/template.service';
 import { LabelGeneratorService } from '../print/label-generator.service';
 import { PrintSetting, DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
+import { webFontLoader } from '../print/generators/web-font-loader';
 
 @Component({
   selector: 'app-editor',
@@ -123,6 +124,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
+    // 字体先行：先把 Liberation Sans / Noto Sans SC 加载到 document.fonts，
+    // 这样 Fabric 在 loadFromJSON 排版文字时就能用上正确字体，
+    // 不会回退到系统默认导致设计与 PDF 不一致。
+    // 失败不阻塞（设计器仍可用，只是字体回退到系统默认）
+    void webFontLoader.ensureLoaded().catch((err) => {
+      console.warn('[Editor] Print fonts failed to load, falling back to system fonts:', err);
+    });
+
     this.canvasService.initialize(this.htmlCanvas.nativeElement, this.canvasState());
     this.hasCanvasInitialized = true;
 

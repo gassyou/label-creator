@@ -36,6 +36,7 @@
     "ng-zorro-antd": "^21.3.0",
     "qrcode": "^1.5.4",
     "rxjs": "~7.8.0",
+    "svg2pdf.js": "^2.7.0",
     "tslib": "^2.3.0"
   },
   "devDependencies": {

@@ -1,10 +1,19 @@
-import { Label, PrintSetting, PX_PER_MM } from '../../editor/models/label.models';
-import { Canvas, FabricImage, Pattern } from 'fabric';
+import { Label, PrintSetting, PX_PER_MM, millimetersToPixels } from '../../editor/models/label.models';
 import { LabelGenerator, SvgGenerateOptions } from './label-generator.interface';
 import { PrintLayoutCalculator } from './print-layout-calculator';
+import {
+  RenderCache,
+  applyLabelToCanvas,
+  createRenderCanvas
+} from './fabric-render-helper';
 
 /**
  * SVG 标签生成器
+ *
+ * 与 PDF 生成器共享 fabric-render-helper 渲染层：
+ * 批量场景下复用同一个 StaticCanvas + RenderCache，
+ * 首个标签构建对象树后，后续标签只增量更新文本/图片，
+ * 避免 N 次 loadFromJSON + N 次图片重解码。
  */
 export class SvgLabelGenerator implements LabelGenerator {
   readonly name = 'svg';
@@ -27,20 +36,43 @@ export class SvgLabelGenerator implements LabelGenerator {
 
     const pageCount = PrintLayoutCalculator.getPageCount(labels.length, layout);
 
+    // 复用同一个 StaticCanvas 与对象树缓存
+    // 注：单位与单标签导出保持一致（mm → px × multiplier），与之前仅用 mm × multiplier 的实现有差异；
+    // 旧实现会得到 ~80px 画布明显偏小，这里修正为带 DPI 的物理像素尺寸。
+    const widthPx = millimetersToPixels(labels[0].width) * multiplier;
+    const heightPx = millimetersToPixels(labels[0].height) * multiplier;
+    const canvas = createRenderCanvas(widthPx, heightPx);
+    const cache: RenderCache = { loaded: false, current: [] };
+
     // 创建合并 SVG 字符串：所有页面平铺
     const pageSvgs: string[] = [];
 
-    for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-      const pageLabels = this.getPageLabels(pageIndex, labels, layout);
-      const pageSvgsList: string[] = [];
+    let completed = 0;
+    const total = labels.length;
 
-      for (const label of pageLabels) {
-        const svg = await this.renderLabelToSvg(label, multiplier);
-        pageSvgsList.push(svg);
+    try {
+      for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+        const pageLabels = this.getPageLabels(pageIndex, labels, layout);
+        const pageSvgsList: string[] = [];
+
+        for (const label of pageLabels) {
+          await applyLabelToCanvas(canvas, label, widthPx, heightPx, cache);
+          pageSvgsList.push(canvas.toSVG());
+
+          completed++;
+          options?.onProgress?.({
+            completed,
+            total,
+            currentPage: pageIndex,
+            totalPages: pageCount
+          });
+        }
+
+        // 拼接同一页的标签
+        pageSvgs.push(this.combinePageSvgs(pageSvgsList, layout.paperWidth, layout.paperHeight));
       }
-
-      // 拼接同一页的标签
-      pageSvgs.push(this.combinePageSvgs(pageSvgsList, layout.paperWidth, layout.paperHeight));
+    } finally {
+      canvas.dispose();
     }
 
     // 拼接所有页面
@@ -54,53 +86,29 @@ export class SvgLabelGenerator implements LabelGenerator {
 
   async generateSingle(label: Label, options?: SvgGenerateOptions): Promise<Blob | string> {
     const multiplier = options?.multiplier ?? 2;
-    const svg = await this.renderLabelToSvg(label, multiplier * PX_PER_MM);
+    const widthPx = Math.round(label.width * multiplier * PX_PER_MM);
+    const heightPx = Math.round(label.height * multiplier * PX_PER_MM);
 
-    if (options?.asString) {
-      return svg;
+    const canvas = createRenderCanvas(widthPx, heightPx);
+    const cache: RenderCache = { loaded: false, current: [] };
+
+    try {
+      await applyLabelToCanvas(canvas, label, widthPx, heightPx, cache);
+      const svg = canvas.toSVG();
+
+      if (options?.asString) {
+        return svg;
+      }
+      return new Blob([svg], { type: 'image/svg+xml' });
+    } finally {
+      canvas.dispose();
     }
-    return new Blob([svg], { type: 'image/svg+xml' });
   }
 
   private getPageLabels(pageIndex: number, labels: Label[], layout: ReturnType<typeof PrintLayoutCalculator.calculate>): Label[] {
     const start = pageIndex * layout.labelsPerPage;
     const end = start + layout.labelsPerPage;
     return labels.slice(start, end);
-  }
-
-  private async renderLabelToSvg(label: Label, multiplier: number): Promise<string> {
-    const element = document.createElement('canvas');
-    const canvas = new Canvas(element, {
-      selection: false,
-      renderOnAddRemove: false
-    });
-
-    const widthPx = Math.round(label.width * multiplier);
-    const heightPx = Math.round(label.height * multiplier);
-
-    canvas.setDimensions({ width: widthPx, height: heightPx });
-    canvas.backgroundColor = label.backgroundColor;
-
-    if (label.backgroundImage) {
-      try {
-        const bgImg = await FabricImage.fromURL(label.backgroundImage);
-        const pattern = new Pattern({
-          source: bgImg.getElement(),
-          repeat: 'repeat'
-        });
-        canvas.backgroundColor = pattern;
-      } catch (err) {
-        console.error('[renderLabelToSvg] failed to load background image:', err);
-      }
-    }
-
-    if (label.canvasJson) {
-      await canvas.loadFromJSON(label.canvasJson);
-    }
-
-    const svg = canvas.toSVG();
-    canvas.dispose();
-    return svg;
   }
 
   private combinePageSvgs(svgs: string[], pageWidth: number, pageHeight: number): string {

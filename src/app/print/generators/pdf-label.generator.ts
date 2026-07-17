@@ -1,10 +1,19 @@
 import { Label, PrintSetting, millimetersToPixels } from '../../editor/models/label.models';
-import { Canvas, FabricImage, Pattern } from 'fabric';
+import { StaticCanvas } from 'fabric';
 import { LabelGenerator, PdfGenerateOptions } from './label-generator.interface';
 import { PrintLayoutCalculator } from './print-layout-calculator';
+import {
+  RenderCache,
+  applyLabelToCanvas,
+  createRenderCanvas
+} from './fabric-render-helper';
+import { fontLoader } from './font-loader';
+import { extractFontRequests, rewriteSvgFontFamily, splitTspansByCharset } from './svg-font-rewriter';
 
 /**
  * PDF 标签生成器
+ * 使用 svg2pdf 将标签以矢量方式写入 PDF（文字/矢量图形清晰、体积小）。
+ * 渲染层（Fabric 状态构建）由 fabric-render-helper 统一管理。
  */
 export class PdfLabelGenerator implements LabelGenerator {
   readonly name = 'pdf';
@@ -17,7 +26,7 @@ export class PdfLabelGenerator implements LabelGenerator {
     }
 
     const { jsPDF } = await import('jspdf');
-    const multiplier = options?.multiplier ?? 2;
+    const { svg2pdf } = await import('svg2pdf.js');
 
     // 计算排版
     const layout = PrintLayoutCalculator.calculate(
@@ -34,34 +43,56 @@ export class PdfLabelGenerator implements LabelGenerator {
       format: [layout.paperWidth, layout.paperHeight]
     });
 
-    // 分页渲染
     const pageCount = PrintLayoutCalculator.getPageCount(labels.length, layout);
 
-    for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-      // 添加新页面（第一页已经创建）
-      if (pageIndex > 0) {
-        pdf.addPage([layout.paperWidth, layout.paperHeight], orientation);
+    // 复用同一个 StaticCanvas 与对象树缓存
+    const widthPx = millimetersToPixels(labels[0].width);
+    const heightPx = millimetersToPixels(labels[0].height);
+    const canvas = createRenderCanvas(widthPx, heightPx);
+    const cache: RenderCache = { loaded: false, current: [] };
+
+    // 复用的离屏 SVG 容器（svg2pdf 需要节点在 DOM 中以读取计算样式）
+    const svgHost = this.createSvgHost();
+    document.body.appendChild(svgHost);
+
+    let completed = 0;
+    const total = labels.length;
+
+    try {
+      for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+        if (pageIndex > 0) {
+          pdf.addPage([layout.paperWidth, layout.paperHeight], orientation);
+        }
+
+        const pageLabels = this.getPageLabels(pageIndex, labels, layout);
+
+        for (let i = 0; i < pageLabels.length; i++) {
+          const label = pageLabels[i];
+
+          await applyLabelToCanvas(canvas, label, widthPx, heightPx, cache);
+
+          const svgElement = await this.canvasToSvgElement(canvas, svgHost, pdf);
+          const position = PrintLayoutCalculator.getPosition(i, layout);
+
+          await svg2pdf(svgElement, pdf, {
+            x: position.x,
+            y: position.y,
+            width: layout.labelWidth,
+            height: layout.labelHeight
+          });
+
+          completed++;
+          options?.onProgress?.({
+            completed,
+            total,
+            currentPage: pageIndex,
+            totalPages: pageCount
+          });
+        }
       }
-
-      const pageLabels = this.getPageLabels(pageIndex, labels, layout);
-
-      for (let i = 0; i < pageLabels.length; i++) {
-        const label = pageLabels[i];
-        const pageImage = await this.renderLabelToPng(label, multiplier);
-
-        const position = PrintLayoutCalculator.getPosition(i, layout);
-
-        pdf.addImage(
-          pageImage,
-          'PNG',
-          position.x,
-          position.y,
-          layout.labelWidth,
-          layout.labelHeight,
-          `label-${pageIndex}-${i}`,
-          'FAST'
-        );
-      }
+    } finally {
+      svgHost.remove();
+      canvas.dispose();
     }
 
     return pdf.output('blob');
@@ -73,117 +104,81 @@ export class PdfLabelGenerator implements LabelGenerator {
     }
 
     const { jsPDF } = await import('jspdf');
-    const multiplier = options?.multiplier ?? 2;
+    const { svg2pdf } = await import('svg2pdf.js');
 
     const orientation = this.getOrientation(options?.orientation, label.width, label.height);
 
-    // 直接使用标签的宽高作为 PDF 页面大小
     const pdf = new jsPDF({
       orientation,
       unit: 'mm',
       format: [label.width, label.height]
     });
 
-    // 渲染标签为 PNG 并添加到 PDF（居中填充整个页面）
-    const pageImage = await this.renderLabelToPng(label, multiplier);
+    const widthPx = millimetersToPixels(label.width);
+    const heightPx = millimetersToPixels(label.height);
+    const canvas = createRenderCanvas(widthPx, heightPx);
+    const cache: RenderCache = { loaded: false, current: [] };
 
-    pdf.addImage(
-      pageImage,
-      'PNG',
-      0,
-      0,
-      label.width,
-      label.height,
-      `label-single`,
-      'FAST'
-    );
+    const svgHost = this.createSvgHost();
+    document.body.appendChild(svgHost);
+
+    try {
+      await applyLabelToCanvas(canvas, label, widthPx, heightPx, cache);
+      const svgElement = await this.canvasToSvgElement(canvas, svgHost, pdf);
+      await svg2pdf(svgElement, pdf, {
+        x: 0,
+        y: 0,
+        width: label.width,
+        height: label.height
+      });
+    } finally {
+      svgHost.remove();
+      canvas.dispose();
+    }
 
     return pdf.output('blob');
   }
 
-  private async renderLabelToPng(label: Label, multiplier: number): Promise<string> {
-    const widthPx = millimetersToPixels(label.width);
-    const heightPx = millimetersToPixels(label.height);
+  /**
+   * 创建离屏 SVG 宿主容器（svg2pdf 读取计算样式需节点在文档中）
+   */
+  private createSvgHost(): HTMLDivElement {
+    const host = document.createElement('div');
+    host.style.position = 'absolute';
+    host.style.left = '-99999px';
+    host.style.top = '0';
+    host.style.visibility = 'hidden';
+    host.style.pointerEvents = 'none';
+    return host;
+  }
 
-    // Create canvas at label physical pixels
-    const element = document.createElement('canvas');
-    element.width = widthPx;
-    element.height = heightPx;
+  /**
+   * 将画布内容导出为 SVG DOM 元素（供 svg2pdf 使用）
+   * 同时预注册 SVG 中用到的字体到 jspdf。
+   */
+  private async canvasToSvgElement(
+    canvas: StaticCanvas,
+    host: HTMLDivElement,
+    pdf: any
+  ): Promise<SVGSVGElement> {
+    const svgString = canvas.toSVG();
+    // 1) 把所有 font-family 统一改写成我们注册的字体（带 CJK fallback）
+    const rewritten = rewriteSvgFontFamily(svgString);
+    // 2) 把混合字符的 tspan 按字符集拆开（ASCII 一段 / CJK 一段）
+    //    否则 svg2pdf 不会做 per-character fallback，CJK 会变 tofu
+    const split = splitTspansByCharset(rewritten);
+    const doc = new DOMParser().parseFromString(split, 'image/svg+xml');
+    const svgElement = doc.documentElement as unknown as SVGSVGElement;
 
-    const canvas = new Canvas(element, {
-      selection: false,
-      renderOnAddRemove: false
-    });
+    host.replaceChildren(svgElement);
 
-    // Explicitly set dimensions
-    canvas.setDimensions({ width: widthPx, height: heightPx });
-    canvas.backgroundColor = label.backgroundColor;
-
-    if (label.backgroundImage) {
-      try {
-        const bgImg = await FabricImage.fromURL(label.backgroundImage);
-        const pattern = new Pattern({
-          source: bgImg.getElement(),
-          repeat: 'repeat'
-        });
-        canvas.backgroundColor = pattern;
-      } catch (err) {
-        console.error('Failed to load background image:', err);
-      }
+    // 预注册 SVG 中用到的字体
+    const requests = extractFontRequests(split);
+    if (requests.length > 0) {
+      await fontLoader.ensureFontsRegistered(pdf, requests);
     }
 
-    if (label.canvasJson) {
-      const parsed = JSON.parse(label.canvasJson);
-
-      // Get canvas dimensions from JSON (in pixels)
-      const canvasWidth = parsed.width || 800;
-      const canvasHeight = parsed.height || 600;
-
-      // Calculate scale to fit canvas objects into label dimensions
-      const scaleX = widthPx / canvasWidth;
-      const scaleY = heightPx / canvasHeight;
-
-      // Scale all object positions and dimensions
-      if (parsed.objects) {
-        parsed.objects = parsed.objects.map((obj: any) => {
-          // For images (QR/barcode), only scale position, keep original dimensions
-          if (obj.type === 'image' && obj.elementType) {
-            return {
-              ...obj,
-              left: (obj.left || 0) * scaleX,
-              top: (obj.top || 0) * scaleY,
-              scaleX: 1,
-              scaleY: 1
-            };
-          }
-
-          return {
-            ...obj,
-            left: (obj.left || 0) * scaleX,
-            top: (obj.top || 0) * scaleY,
-            width: (obj.width || 100) * scaleX * (obj.scaleX || 1),
-            height: (obj.height || 50) * scaleY * (obj.scaleY || 1),
-            scaleX: 1,
-            scaleY: 1
-          };
-        });
-      }
-
-      // Set canvas dimensions to label size
-      parsed.width = widthPx;
-      parsed.height = heightPx;
-
-      await canvas.loadFromJSON(parsed);
-
-      // Reset viewport transform and dimensions
-      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-      canvas.setDimensions({ width: widthPx, height: heightPx });
-    }
-
-    canvas.requestRenderAll();
-    const png = canvas.toDataURL({ format: 'png', multiplier });
-    canvas.dispose();
-    return png;
+    return svgElement;
   }
 
   private getOrientation(

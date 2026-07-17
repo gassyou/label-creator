@@ -8,6 +8,8 @@ import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzModalService } from 'ng-zorro-antd/modal';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzDividerModule } from 'ng-zorro-antd/divider';
+import { NzProgressModule } from 'ng-zorro-antd/progress';
+import { NzModalModule } from 'ng-zorro-antd/modal';
 import { TemplateService } from '../template.service';
 import { GenerateLabelDialogComponent } from '../../generate-label/generate-label-dialog.component';
 import { GeneratedLabel } from '../../generate-label/generate-label.models';
@@ -28,6 +30,8 @@ import { LabelGeneratorService } from '../../print/label-generator.service';
     NzIconModule,
     NzTableModule,
     NzDividerModule,
+    NzProgressModule,
+    NzModalModule,
     GenerateLabelDialogComponent
   ],
   providers: [NzMessageService, NzModalService],
@@ -89,6 +93,29 @@ import { LabelGeneratorService } from '../../print/label-generator.service';
       (labelsGenerated)="handleLabelsGenerated($event)"
       (dialogClosed)="closeDialog()"
     ></app-generate-label-dialog>
+
+    <!-- PDF 生成进度 -->
+    <nz-modal
+      [nzVisible]="isGenerating()"
+      nzTitle="正在生成 PDF"
+      [nzClosable]="false"
+      [nzMaskClosable]="false"
+      [nzFooter]="null"
+      [nzWidth]="420"
+    >
+      <ng-container *nzModalContent>
+        <div class="generate-progress">
+          <nz-progress
+            [nzPercent]="generateProgress().percent"
+            [nzStatus]="generateProgress().percent === 100 ? 'success' : 'active'"
+          ></nz-progress>
+          <p class="progress-text">
+            已生成 {{ generateProgress().completed }} / {{ generateProgress().total }} 个标签（第
+            {{ generateProgress().currentPage }} / {{ generateProgress().totalPages }} 页）
+          </p>
+        </div>
+      </ng-container>
+    </nz-modal>
   `,
   styles: [`
     .template-list-container {
@@ -212,6 +239,17 @@ import { LabelGeneratorService } from '../../print/label-generator.service';
         }
       }
     }
+
+    .generate-progress {
+      padding: 8px 0;
+
+      .progress-text {
+        margin: 12px 0 0;
+        text-align: center;
+        color: #595959;
+        font-size: 13px;
+      }
+    }
   `]
 })
 export class TemplateListComponent {
@@ -226,6 +264,14 @@ export class TemplateListComponent {
   readonly dialogVisible = signal(false);
   readonly selectedTemplate = signal<LabelTemplate | null>(null);
   readonly generatedLabels = signal<GeneratedLabel[]>([]);
+  readonly isGenerating = signal(false);
+  readonly generateProgress = signal<{ completed: number; total: number; currentPage: number; totalPages: number; percent: number }>({
+    completed: 0,
+    total: 0,
+    currentPage: 0,
+    totalPages: 0,
+    percent: 0
+  });
 
   constructor() {
     this.loadTemplates();
@@ -303,17 +349,43 @@ export class TemplateListComponent {
 
       const boundLabels = await Promise.all(bindingPromises);
 
-      // 生成 PDF
-      const pdfBlob = await this.labelGeneratorService.generatePdf(boundLabels, template.printSetting || DEFAULT_PRINT_SETTING);
+      // 初始化进度并显示进度弹窗
+      this.generateProgress.set({
+        completed: 0,
+        total: boundLabels.length,
+        currentPage: 0,
+        totalPages: 0,
+        percent: 0
+      });
+      this.isGenerating.set(true);
+      this.dialogVisible.set(false);
+
+      // 生成 PDF（带进度回调）
+      const pdfBlob = await this.labelGeneratorService.generatePdf(
+        boundLabels,
+        template.printSetting || DEFAULT_PRINT_SETTING,
+        {
+          onProgress: (progress) => {
+            this.generateProgress.set({
+              completed: progress.completed,
+              total: progress.total,
+              currentPage: progress.currentPage + 1,
+              totalPages: progress.totalPages,
+              percent: progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0
+            });
+          }
+        }
+      );
 
       // 下载 PDF
       this.labelGeneratorService.download(pdfBlob, `${template.name || 'labels'}.pdf`);
 
       this.message.success('PDF 生成成功');
-      this.dialogVisible.set(false);
     } catch (err) {
       console.error('生成 PDF 失败:', err);
       this.message.error('生成 PDF 失败');
+    } finally {
+      this.isGenerating.set(false);
     }
   }
 

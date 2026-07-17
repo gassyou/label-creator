@@ -38,6 +38,37 @@ export interface GenerateOptions {
    * 缩放比例，默认 2
    */
   multiplier?: number;
+
+  /**
+   * 生成进度回调
+   * @param progress 进度信息（已完成标签数 / 总标签数）
+   */
+  onProgress?: (progress: GenerateProgress) => void;
+}
+
+/**
+ * 生成进度信息
+ */
+export interface GenerateProgress {
+  /**
+   * 已完成的标签数
+   */
+  completed: number;
+
+  /**
+   * 标签总数
+   */
+  total: number;
+
+  /**
+   * 当前正在处理的页码（0-based）
+   */
+  currentPage: number;
+
+  /**
+   * 总页数
+   */
+  totalPages: number;
 }
 
 /**

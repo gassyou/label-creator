@@ -36,7 +36,7 @@ export const DEFAULT_SELECTION_STATE: EditorSelectionState = {
   stroke: '',
   strokeWidth: 0,
   color: '#000000',
-  fontFamily: 'Arial',
+  fontFamily: 'Liberation Sans',
   fontSize: 16,
   textAlign: 'left',
   textDecoration: ''

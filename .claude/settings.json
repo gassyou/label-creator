@@ -25,7 +25,20 @@
       "Bash(git -C /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21 show 1b8be56:src/app/editor/models/label.models.ts)",
       "Bash(mkdir -p /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/commands /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/adapters /Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor/types)",
       "Bash(git checkout *)",
-      "Bash(npm i *)"
+      "Bash(npm i *)",
+      "Bash(node -e \"const f=require\\('./node_modules/fabric/package.json'\\); console.log\\('fabric', f.version\\)\")",
+      "Bash(node -e \"const p=require\\('./package.json'\\); const d={...p.dependencies,...p.devDependencies}; console.log\\('svg2pdf.js:', d['svg2pdf.js']||'❌ 未安装'\\); console.log\\('jspdf:', d['jspdf']||'❌'\\); console.log\\('canvg:', d['canvg']||'❌ 未安装'\\); console.log\\('fabric:', d['fabric']||'❌'\\);\")",
+      "Bash(node -e \"console.log\\(require\\('jspdf/package.json'\\).version\\)\")",
+      "Bash(npm view *)",
+      "Bash(timeout 10 npm view svg2pdf.js version --registry=https://registry.npmjs.org/)",
+      "Bash(curl -s https://registry.npmjs.org/svg2pdf.js/latest)",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(s\\);console.log\\('latest version:',j.version\\);console.log\\('peerDependencies:',JSON.stringify\\(j.peerDependencies||{}\\)\\);}catch\\(e\\){console.log\\('parse fail:',s.slice\\(0,200\\)\\)}}\\)\")",
+      "Bash(node -e \"console.log\\('svg2pdf.js:', require\\('svg2pdf.js/package.json'\\).version\\)\")",
+      "Bash(node -e \"const p=require\\('svg2pdf.js/package.json'\\); console.log\\('main:',p.main,'module:',p.module,'exports:',JSON.stringify\\(p.exports\\)\\)\")",
+      "Bash(node -e \"const p=require\\('svg2pdf.js/package.json'\\); console.log\\(p.module||p.main\\)\")",
+      "Bash(grep -oE 'export\\\\{[^}]*\\\\}|export function svg2pdf|svg2pdf as' node_modules/svg2pdf.js/__TRACKED_VAR__)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(node -e \"const p=require\\('svg2pdf.js/package.json'\\);console.log\\('type:',p.type,'module:',p.module\\)\")"
     ],
     "additionalDirectories": [
       "/Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor"
