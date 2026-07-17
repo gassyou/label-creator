@@ -95,8 +95,10 @@ export async function applyLabelToCanvas(
     } else if (type === 'image') {
       if (next.src && (!prev || next.src !== prev.src)) {
         await obj.setSrc(next.src);
-        obj.set({ left: next.left, top: next.top, scaleX: 1, scaleY: 1 });
       }
+      // 同步位置与缩放。Fabric 自身会处理 scaleX/Y 与图片自然尺寸的合成，
+      // 这里不要把 scaleX 强制设回 1，否则会丢失用户在编辑器里调整过的大小。
+      obj.set({ left: next.left, top: next.top });
     }
   }
 
@@ -114,15 +116,20 @@ export function scaleObjects(parsed: any, widthPx: number, heightPx: number): an
 
   const objects = parsed.objects || [];
   return objects.map((obj: any) => {
-    // 图片（二维码/条码）：和 textbox 一样保留 obj.scaleX/scaleY，
-    // 否则会强行 1.0 撑大画上去盖住旁边的文字
+    // 图片（二维码/条码）的处理与 textbox 一致：
+    // 只按画布缩放比例缩放 left/top，width/height 保持 obj 原值不乘 scaleX，
+    // obj.scaleX/Y 也保留。
+    //
+    // 原因：FabricImage 序列化时 width/height 对应"逻辑尺寸"（不含 scaleX），
+    // toSVG 时视觉尺寸 = naturalWidth × <g transform="scale(scaleX)">。
+    // 如果把 scaleX 折进 width，会出现两种坏结果：
+    //   1) 用户拖大过的 QR（scaleX>1）会被画到物理画布之外、被 svg2pdf 裁切；
+    //   2) 同样的画布缩放被双重应用，元素位置/大小错乱。
     if (obj.type === 'image' && obj.elementType) {
       return {
         ...obj,
         left: (obj.left || 0) * scaleX,
-        top: (obj.top || 0) * scaleY,
-        width: (obj.width || 100) * scaleX,
-        height: (obj.height || 100) * scaleY
+        top: (obj.top || 0) * scaleY
       };
     }
 

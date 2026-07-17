@@ -1364,10 +1364,15 @@ export class EditorCanvasService {
   generateQRCodeDataUrl(value: string, size: number): string {
     try {
       // Use qrcode library to generate QR code to canvas
+      // margin: 1 留 1 个模块的白色静默区（~4px）作为缓冲
+      // 防止 PDF 渲染时把贴边的 QR 模块裁掉
+      // 之前 margin: 0 会出现"最下面一行方块底边被裁"的问题
+      // 之前默认 margin: 4 又有"明显白色边"的问题
+      // margin: 1 是兼顾完整性和紧凑性的折中值
       const canvas = document.createElement('canvas');
       canvas.width = size;
       canvas.height = size;
-      (QRCode as any).toCanvas(canvas, value, { width: size });
+      (QRCode as any).toCanvas(canvas, value, { width: size, margin: 1 });
       return canvas.toDataURL('image/png');
     } catch (e) {
       console.error('QR code generation failed:', e);

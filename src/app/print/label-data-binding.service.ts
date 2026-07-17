@@ -138,7 +138,9 @@ export class LabelDataBindingService {
       const size = Math.min(widthPx, heightPx);
       const dataUrl = await generateQRCodeSVG(resolvedValue, size);
 
-      return { ...obj, src: dataUrl, scaleX: 1, scaleY: 1 };
+      // 保留模板里 obj.scaleX/scaleY（如果用户在编辑器里调整过 QR 大小），
+      // 不再像之前那样强行设回 1（会改变视觉尺寸导致位置错乱）
+      return { ...obj, src: dataUrl };
     }
 
     return obj;
@@ -215,9 +217,11 @@ async function generateQRCodeSVG(
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
+    // margin: 1 留 1 个模块的白色静默区作为缓冲，
+    // 防止 margin: 0 贴边时被 PDF 渲染裁掉最底/最右一行
     await (QRCode as any).toCanvas(canvas, value, {
       width: size,
-      margin: 0,
+      margin: 1,
       color: { dark: '#000000', light: '#ffffff' }
     });
     return canvas.toDataURL('image/png');

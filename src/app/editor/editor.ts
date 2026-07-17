@@ -135,6 +135,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.canvasService.initialize(this.htmlCanvas.nativeElement, this.canvasState());
     this.hasCanvasInitialized = true;
 
+    // [DEBUG] 注册调试入口到 window，方便控制台调用
+    (window as any).debugDownloadQrImages = () => this.debugDownloadQrImages();
+    console.info('[Editor] 调试入口已注册：await window.debugDownloadQrImages()');
+
     // Load template after canvas is initialized
     if (this.templateId) {
       this.loadTemplate(this.templateId);
@@ -529,6 +533,53 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   updateTemplateName(name: string): void {
     this.templateName.set(name || '未命名');
+  }
+
+  /**
+   * [DEBUG] 提取当前模板里所有 QR 码图片，下载为独立 PNG
+   * 用于对比"二维码图片本身"和"PDF 里的二维码"是否一致
+   *
+   * 不经过 Fabric 渲染，直接从 JSON 拿原始 src 下载。
+   * 打开浏览器控制台调用：await window.debugDownloadQrImages()
+   */
+  private async debugDownloadQrImages(): Promise<void> {
+    const current = this.template();
+    const label = current?.label;
+    if (!label?.canvasJson) {
+      console.error('[debugDownloadQrImages] 当前模板没有 canvasJson');
+      return;
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(label.canvasJson);
+    } catch (e) {
+      console.error('[debugDownloadQrImages] canvasJson 解析失败:', e);
+      return;
+    }
+    const qrs: any[] = (parsed.objects || []).filter((o: any) => o.elementType === 'qrcode');
+    console.log(`[debugDownloadQrImages] 在 canvasJson 里找到 ${qrs.length} 个 QR 码`);
+
+    for (let i = 0; i < qrs.length; i++) {
+      const qr = qrs[i];
+      const src: string | undefined = qr.src;
+      if (!src) {
+        console.warn(`[debugDownloadQrImages] QR #${i + 1} 没有 src`);
+        continue;
+      }
+
+      try {
+        const a = document.createElement('a');
+        a.href = src;
+        a.download = `qr-original-${i + 1}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        console.log(`[debugDownloadQrImages] 已下载原始 PNG: qr-original-${i + 1}.png（来源：JSON.src，未经任何处理）`);
+      } catch (e) {
+        console.error(`[debugDownloadQrImages] 下载 QR #${i + 1} 失败:`, e);
+      }
+    }
   }
 
   private buildLabelTemplate(): LabelTemplate {

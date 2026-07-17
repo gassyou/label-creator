@@ -38,7 +38,9 @@
       "Bash(node -e \"const p=require\\('svg2pdf.js/package.json'\\); console.log\\(p.module||p.main\\)\")",
       "Bash(grep -oE 'export\\\\{[^}]*\\\\}|export function svg2pdf|svg2pdf as' node_modules/svg2pdf.js/__TRACKED_VAR__)",
       "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
-      "Bash(node -e \"const p=require\\('svg2pdf.js/package.json'\\);console.log\\('type:',p.type,'module:',p.module\\)\")"
+      "Bash(node -e \"const p=require\\('svg2pdf.js/package.json'\\);console.log\\('type:',p.type,'module:',p.module\\)\")",
+      "Bash(node -e \"const fs=require\\('fs'\\);const g=require\\('glob'\\);const files=g.sync\\('src/**/*.ts'\\);for\\(const f of files\\){const t=fs.readFileSync\\(f,'utf8'\\);if\\(/qrcode|elementType.*qr/i.test\\(t\\)\\){console.log\\('---',f\\);const lines=t.split\\('\\\\n'\\);lines.forEach\\(\\(l,i\\)=>{if\\(/qrcode|elementType|setSrc|src:|scaleX|scaleY|width:|height:|left:|top:|clipPath|globalCompositeOperation/i.test\\(l\\)\\)console.log\\(\\(i+1\\)+':',l\\)}}}\")",
+      "Bash(node -e ' *)"
     ],
     "additionalDirectories": [
       "/Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor"
