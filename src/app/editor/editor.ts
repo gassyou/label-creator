@@ -30,11 +30,12 @@ import { TemplateService } from '../template/template.service';
 import { LabelGeneratorService } from '../print/label-generator.service';
 import { PrintSetting, DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
 import { webFontLoader } from '../print/generators/web-font-loader';
+import { LabelDocumentService } from './document';
 
 @Component({
   selector: 'app-editor',
   imports: [FormsModule, EditorPropertiesPanelComponent, EditorTopbarComponent, EditorToolStripComponent, PrintSettingDialogComponent],
-  providers: [EditorCanvasService],
+  providers: [EditorCanvasService, LabelDocumentService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
   styleUrl: './editor.scss'
@@ -63,7 +64,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly hasSelection = computed(() => !!this.selectionState().id || this.canvasService.hasMultiSelection());
   readonly textEditorVisible = this.canvasService.textEditorVisible.asReadonly();
   readonly figureEditorVisible = this.canvasService.figureEditorVisible.asReadonly();
-  readonly jsonPreview = this.canvasService.jsonPreview.asReadonly();
 
   /** Single-page template signal */
   readonly template = signal<LabelTemplate>({

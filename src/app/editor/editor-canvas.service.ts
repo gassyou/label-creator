@@ -1,9 +1,10 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Canvas, FabricImage, IText, Pattern } from 'fabric';
 import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, QRCodeElement, BarcodeElement, ImageElement, EditorSelectionState } from './models/editor.models';
 import { Label, millimetersToPixels } from './models/label.models';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { ElementFactory } from './models/element-factory';
+import { LabelDocumentService } from './document';
 import { EditorCommand } from './commands/editor-command';
 import { AddTextCommand } from './commands/add-text.command';
 import { AddShapeCommand } from './commands/add-shape.command';
@@ -19,11 +20,12 @@ export class EditorCanvasService {
   readonly selected = signal<BaseElement | null>(null);
   readonly textEditorVisible = signal(false);
   readonly figureEditorVisible = signal(false);
-  readonly jsonPreview = signal('');
   readonly revision = signal(0);
   readonly zoom = signal(1);
   readonly canUndoSignal = signal(false);
   readonly canRedoSignal = signal(false);
+
+  private doc = inject(LabelDocumentService);
 
   public canvas: Canvas | null = null;
   private drawingModeEnabled = false;
@@ -67,7 +69,6 @@ export class EditorCanvasService {
     this.canvas.on('text:changed', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
     this.applyInteractionMode();
     this.canvas.requestRenderAll();
-    this.jsonPreview.set(JSON.stringify(this.canvas.toJSON(), null, 2));
   }
 
   destroy(): void {
@@ -154,6 +155,19 @@ export class EditorCanvasService {
 
   getDrawingModeEnabled(): boolean {
     return this.drawingModeEnabled;
+  }
+
+  /**
+   * Returns the Fabric canvas's serializable JSON projection (plain object).
+   * Returns `null` when the Fabric canvas has not yet been initialised.
+   *
+   * Consumers (e.g. the JSON preview pane) read this directly instead of
+   * subscribing to a `jsonPreview` signal, so the projection is computed
+   * on-demand and not pushed to every subscriber.
+   */
+  toCanvasJson(): Record<string, unknown> | null {
+    if (!this.canvas) return null;
+    return this.canvas.toJSON() as unknown as Record<string, unknown>;
   }
 
   /**
@@ -1469,7 +1483,6 @@ export class EditorCanvasService {
     }
 
     this.revision.update((value) => value + 1);
-    this.jsonPreview.set(JSON.stringify(this.canvas?.toJSON() ?? {}, null, 2));
   }
 
   /**
