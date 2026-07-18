@@ -1,0 +1,22 @@
+<!-- src/app/editor/properties/common-properties.component.html -->
+@let s = state();
+@if (s) {
+  <label>
+    <span>ID</span>
+    <input
+      type="text"
+      [ngModel]="s.id"
+      (ngModelChange)="onIdChange($event)"
+    />
+  </label>
+  <label>
+    <span>Opacity {{ ((s as any).opacity ?? 1) * 100 | number:'1.0-0' }}%</span>
+    <input
+      type="range"
+      min="0"
+      max="100"
+      [ngModel]="((s as any).opacity ?? 1) * 100"
+      (ngModelChange)="onOpacityChange($event)"
+    />
+  </label>
+}
