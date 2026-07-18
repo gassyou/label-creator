@@ -213,7 +213,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         this.canvasService.clearSelection();
         return;
       case 'text':
-        this.canvasService.addText(this.textString);
+        void this.canvasService.addText(this.textString);
         this.textString = 'Text';
         return;
       case 'square':
@@ -337,10 +337,17 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   updateSelectionText(text: string): void {
     this.selectionState.update((state) => ({ ...state, text }));
     // If it's a barcode or QR code, also update the binding value
-    if (this.selectionState().type === 'barcode' || this.selectionState().type === 'qrcode') {
+
+    if (this.selectionState().type === 'barcode') {
       this.canvasService.updateBarcodeProperties(
         this.selectionState().barcodeFormat ?? 'CODE128',
         this.selectionState().showText ?? true,
+        text
+      );
+    }
+
+    if(this.selectionState().type === 'qrcode') {
+      this.canvasService.updateBarcodeProperties(
         text
       );
     }

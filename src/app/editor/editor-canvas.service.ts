@@ -15,6 +15,8 @@ import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, RectElement, T
 import { Label, millimetersToPixels } from './models/label.models';
 import QRCode from 'qrcode';
 import { BaseElement, type RenderContext } from './models/element-base';
+import { EditorCommand } from './commands/editor-command';
+import { AddTextCommand } from './commands/add-text.command';
 
 
 @Injectable()
@@ -82,6 +84,60 @@ export class EditorCanvasService {
     this.applyInteractionMode();
   }
 
+  execute(command: EditorCommand): Promise<void> {
+    this.pushUndoSnapshot();
+    this.redoStack.length = 0;
+    return Promise.resolve()
+      .then(() => command.execute(this))
+      .then(
+        () => this.touchRevision(),
+        (err) => {
+          this.undoStack.pop();
+          throw err;
+        }
+      );
+  }
+
+  undo(): void {
+    if (this.undoStack.length === 0 || !this.canvas) return;
+    const current = JSON.stringify(this.canvas.toJSON());
+    this.redoStack.push(current);
+    const snapshot = this.undoStack.pop()!;
+    this.hydrating = true;
+    this.canvas.loadFromJSON(snapshot).then(() => {
+      this.canvas?.discardActiveObject();
+      this.applyInteractionMode();
+      this.hydrating = false;
+      this.touchRevision();
+      this.canvas?.requestRenderAll();
+    });
+  }
+
+  redo(): void {
+    if (this.redoStack.length === 0 || !this.canvas) return;
+    const current = JSON.stringify(this.canvas.toJSON());
+    this.undoStack.push(current);
+    const snapshot = this.redoStack.pop()!;
+    this.hydrating = true;
+    this.canvas.loadFromJSON(snapshot).then(() => {
+      this.canvas?.discardActiveObject();
+      this.applyInteractionMode();
+      this.hydrating = false;
+      this.touchRevision();
+      this.canvas?.requestRenderAll();
+    });
+  }
+
+  canUndo(): boolean { return this.undoStack.length > 0; }
+  canRedo(): boolean { return this.redoStack.length > 0; }
+
+  private pushUndoSnapshot(): void {
+    if (!this.canvas) return;
+    const snapshot = JSON.stringify(this.canvas.toJSON());
+    this.undoStack.push(snapshot);
+    if (this.undoStack.length > this.maxUndoLevels) this.undoStack.shift();
+  }
+
   getDrawingModeEnabled(): boolean {
     return this.drawingModeEnabled;
   }
@@ -114,51 +170,10 @@ export class EditorCanvasService {
   // Element Creation Methods
   // ============================================================
 
-  addText(content: string): LabelElement {
-    if (!this.canvas) {
-      throw new Error('Canvas not initialized');
-    }
-
-    const id = this.randomId();
-    const text = new Textbox(content.trim() || 'Text', {
-      left: 24,
-      top: 24,
-      fontFamily: DEFAULT_SELECTION_STATE.fontFamily,
-      fill: '#111827',
-      fontSize: DEFAULT_SELECTION_STATE.fontSize,
-      width: 200,
-      minWidth: 50,
-      splitByGrapheme: true,
-      textAlign: 'left',
-      whiteSpace: 'normal',
-      originX: 'left',
-      originY: 'top',
-      hasRotatingPoint: true
-    });
-
-    // After resizing is complete, convert any scaling to actual dimensions
-    // This prevents text from being stretched when resizing the textbox
-    text.on('modified', () => {
-      const scaleX = text.scaleX || 1;
-      const scaleY = text.scaleY || 1;
-      if (scaleX !== 1 || scaleY !== 1) {
-        const newWidth = scaleX !== 1 ? Math.max(50, (text.width || 50) * scaleX) : text.width;
-        text.set({ width: newWidth, scaleX: 1, scaleY: 1 });
-        text.setCoords();
-        this.canvas?.requestRenderAll();
-      }
-    });
-
-    this.extend(text, id);
-
-    // Create and track the element model BEFORE adding to canvas
-    const element = this.createElementModel(text, 'text') as TextElement;
-    this.elementRegistry.set(element.id, element as unknown as BaseElement);
-
-    this.canvas.add(text);
-    this.selectItemAfterAdded(text);
-
-    return element;
+  async addText(content: string): Promise<TextElement> {
+    const cmd = new AddTextCommand(content);
+    await this.execute(cmd);
+    return cmd.element!;
   }
 
   addShape(shapeType: 'square' | 'triangle' | 'circle' | 'line'): LabelElement {
@@ -456,40 +471,6 @@ export class EditorCanvasService {
     }
     this.canvas?.requestRenderAll();
     this.touchRevision();
-  }
-
-  undo(): void {
-    if (!this.canvas || this.undoStack.length === 0) {
-      return;
-    }
-
-    const currentState = JSON.stringify(this.canvas.toJSON());
-    this.redoStack.push(currentState);
-
-    const previousState = this.undoStack.pop();
-    if (previousState) {
-      this.canvas.loadFromJSON(previousState).then(() => {
-        this.canvas?.requestRenderAll();
-        this.touchRevision();
-      });
-    }
-  }
-
-  redo(): void {
-    if (!this.canvas || this.redoStack.length === 0) {
-      return;
-    }
-
-    const currentState = JSON.stringify(this.canvas.toJSON());
-    this.undoStack.push(currentState);
-
-    const nextState = this.redoStack.pop();
-    if (nextState) {
-      this.canvas.loadFromJSON(nextState).then(() => {
-        this.canvas?.requestRenderAll();
-        this.touchRevision();
-      });
-    }
   }
 
   private saveUndoState(): void {
