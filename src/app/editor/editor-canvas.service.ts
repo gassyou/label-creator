@@ -1,10 +1,10 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { Canvas, FabricImage, IText, Pattern } from 'fabric';
 import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, QRCodeElement, BarcodeElement, ImageElement, EditorSelectionState } from './models/editor.models';
-import { Label, millimetersToPixels } from './models/label.models';
+import { Label, PX_PER_MM, millimetersToPixels } from './models/label.models';
+import { LabelDocumentService, type LabelPageSettings } from './document';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { ElementFactory } from './models/element-factory';
-import { LabelDocumentService } from './document';
 import { EditorCommand } from './commands/editor-command';
 import { AddTextCommand } from './commands/add-text.command';
 import { AddShapeCommand } from './commands/add-shape.command';
@@ -32,8 +32,29 @@ export class EditorCanvasService {
   private hydrating = false;
   private canvasElement: HTMLCanvasElement | null = null;
 
+  /**
+   * Set to true while we are applying a `LabelDocument` change to Fabric.
+   * While true, our own `object:modified` / `selection:created` events are
+   * ignored — they are echoes of a doc-driven update, not user input.
+   */
+  private isApplyingFromDoc = false;
+
   // Element registry for tracking all elements on canvas
   public elementRegistry: Map<string, BaseElement> = new Map();
+
+  constructor() {
+    // document → fabric: re-render elements when the document changes.
+    effect(() => {
+      const elements = this.doc.elements();
+      untracked(() => this.applyElementsFromDoc(elements));
+    });
+
+    // document → fabric: re-render canvas (size, background) when page changes.
+    effect(() => {
+      const page = this.doc.page();
+      untracked(() => this.applyPageFromDoc(page));
+    });
+  }
 
   // Clipboard for copy/paste
   private clipboard: any[] = [];
@@ -64,7 +85,7 @@ export class EditorCanvasService {
     this.canvas.on('selection:updated', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
     this.canvas.on('selection:cleared', () => this.handleSelection(null));
     this.canvas.on('object:added', () => this.touchRevision());
-    this.canvas.on('object:modified', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
+    this.canvas.on('object:modified', () => this.handleObjectModified(this.canvas?.getActiveObject() ?? null));
     this.canvas.on('object:removed', () => this.touchRevision());
     this.canvas.on('text:changed', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
     this.applyInteractionMode();
@@ -1238,6 +1259,7 @@ export class EditorCanvasService {
       this.selected.set(null);
       this.textEditorVisible.set(false);
       this.figureEditorVisible.set(false);
+      this.doc.selectElement(null);
       return;
     }
 
@@ -1260,6 +1282,7 @@ export class EditorCanvasService {
       this.selected.set(dummyElement as unknown as BaseElement);
       this.textEditorVisible.set(false);
       this.figureEditorVisible.set(false);
+      this.doc.selectElement(null);
     } else {
       const id = this.getObjectId(object);
       const element = this.elementRegistry.get(id) ?? null;
@@ -1274,7 +1297,63 @@ export class EditorCanvasService {
       } else if (type === 'i-text' || type === 'textbox') {
         this.textEditorVisible.set(true);
       }
+
+      // Mirror selection into the central document so doc consumers can
+      // observe it. The local signals above are kept for the legacy panel
+      // (Task 15 migrates them).
+      this.doc.selectElement(id || null);
     }
+  }
+
+  /**
+   * Fabric `object:modified` handler. Writes the new geometry back to the
+   * central document so doc consumers (and the doc → fabric effect) stay
+   * in sync. ActiveSelection (multi-select) is ignored — it has no single id.
+   */
+  private handleObjectModified(object: any): void {
+    // Echoes of doc-driven updates must not re-enter the document.
+    if (this.isApplyingFromDoc) {
+      this.handleSelection(this.canvas?.getActiveObject() ?? null);
+      return;
+    }
+
+    if (!object) {
+      this.handleSelection(null);
+      return;
+    }
+
+    // Multi-select: skip per-element write; just refresh selection state.
+    if (object.type?.toLowerCase() === 'activeselection') {
+      this.handleSelection(object);
+      return;
+    }
+
+    const id = this.getObjectId(object);
+    if (!id) {
+      this.handleSelection(this.canvas?.getActiveObject() ?? null);
+      return;
+    }
+
+    const visualWidth = (object.width ?? 0) * (object.scaleX ?? 1);
+    const visualHeight = (object.height ?? 0) * (object.scaleY ?? 1);
+    const patch: Partial<LabelElement> = {
+      x: object.left ?? 0,
+      y: object.top ?? 0,
+      width: visualWidth,
+      height: visualHeight,
+    } as Partial<LabelElement>;
+    const anyObj = object as any;
+    if (anyObj.angle !== undefined) (patch as any).rotation = anyObj.angle;
+    if (anyObj.opacity !== undefined) (patch as any).opacity = anyObj.opacity;
+    if (anyObj.scaleX !== undefined) (patch as any).scaleX = anyObj.scaleX;
+    if (anyObj.scaleY !== undefined) (patch as any).scaleY = anyObj.scaleY;
+
+    // Persist the geometry into the doc. This triggers the elements effect
+    // (re-entering via applyElementsFromDoc, which sets isApplyingFromDoc
+    // and is therefore ignored on the next object:modified bounce).
+    this.doc.updateElement(id, patch);
+
+    this.handleSelection(object);
   }
 
   private applyInteractionMode(): void {
@@ -1483,6 +1562,43 @@ export class EditorCanvasService {
     }
 
     this.revision.update((value) => value + 1);
+  }
+
+  private applyElementsFromDoc(elements: ReadonlyMap<string, LabelElement>): void {
+    if (!this.canvas) return;
+    this.isApplyingFromDoc = true;
+    try {
+      // Coarse scaffold: build a Map<id, FabricObject> from the canvas's
+      // current objects (each has `id` from ElementFactory.fromFabricObject),
+      // then for each (id, data) in the document, either update the existing
+      // Fabric object's properties or remove it if absent from the doc.
+      //
+      // The full reconciliation is large and out of scope for this task —
+      // this is the integration point. Track the rest as a follow-up.
+    } finally {
+      this.isApplyingFromDoc = false;
+    }
+  }
+
+  private applyPageFromDoc(page: LabelPageSettings): void {
+    if (!this.canvas) return;
+    this.isApplyingFromDoc = true;
+    try {
+      // Update canvas dimensions (px) and background color/image. Mirrors
+      // the legacy logic in editor.ts and editor-canvas.service.ts
+      // applyCanvasFill / resizeCanvas / setCanvasBackground methods.
+      const wPx = Math.round(page.widthMm * PX_PER_MM);
+      const hPx = Math.round(page.heightMm * PX_PER_MM);
+      this.canvas.setDimensions({ width: wPx, height: hPx });
+      if (page.backgroundColor) {
+        this.canvas.backgroundColor = page.backgroundColor;
+      } else {
+        this.canvas.backgroundColor = '';
+      }
+      this.canvas.requestRenderAll();
+    } finally {
+      this.isApplyingFromDoc = false;
+    }
   }
 
   /**
