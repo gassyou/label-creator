@@ -11,14 +11,15 @@ import {
   Triangle,
   util as fabricUtil
 } from 'fabric';
-import { DEFAULT_SELECTION_STATE, LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, EditorSelectionState, ElementType } from './models/editor.models';
+import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, EditorSelectionState, ElementType } from './models/editor.models';
 import { Label, millimetersToPixels } from './models/label.models';
 import QRCode from 'qrcode';
+import { BaseElement, type RenderContext } from './models/element-base';
 
 
 @Injectable()
 export class EditorCanvasService {
-  readonly selected = signal<LabelElement | null>(null);
+  readonly selected = signal<BaseElement | null>(null);
   readonly textEditorVisible = signal(false);
   readonly figureEditorVisible = signal(false);
   readonly jsonPreview = signal('');
@@ -31,7 +32,7 @@ export class EditorCanvasService {
   private canvasElement: HTMLCanvasElement | null = null;
 
   // Element registry for tracking all elements on canvas
-  private elementRegistry: Map<string, LabelElement> = new Map();
+  protected elementRegistry: Map<string, BaseElement> = new Map();
 
   // Clipboard for copy/paste
   private clipboard: any[] = [];
@@ -85,6 +86,30 @@ export class EditorCanvasService {
     return this.drawingModeEnabled;
   }
 
+  /**
+   * Builds a narrow RenderContext that element render() methods can use to
+   * create Fabric objects, attach ids, and register custom serialization
+   * properties — without exposing the rest of EditorCanvasService.
+   */
+  getRenderContext(): RenderContext {
+    if (!this.canvas) throw new Error('Canvas not initialized');
+    return {
+      canvas: this.canvas,
+      extend: (obj, id) => this.extend(obj, id),
+      extendWithBarcodeProperties: (obj, props) => this.extendWithBarcodeProperties(obj, props),
+      randomId: () => this.randomId()
+    };
+  }
+
+  /**
+   * Returns the element registry map for read/write access by element classes.
+   * The returned type is narrowed to BaseElement so callers cannot assume
+   * concrete element shapes.
+   */
+  getElementRegistry(): Map<string, BaseElement> {
+    return this.elementRegistry;
+  }
+
   // ============================================================
   // Element Creation Methods
   // ============================================================
@@ -128,7 +153,7 @@ export class EditorCanvasService {
 
     // Create and track the element model BEFORE adding to canvas
     const element = this.createElementModel(text, 'text') as TextElement;
-    this.elementRegistry.set(element.id, element);
+    this.elementRegistry.set(element.id, element as unknown as BaseElement);
 
     this.canvas.add(text);
     this.selectItemAfterAdded(text);
@@ -198,7 +223,7 @@ export class EditorCanvasService {
     }
 
     // Register element before adding to canvas
-    this.elementRegistry.set(shape.id, shape);
+    this.elementRegistry.set(shape.id, shape as unknown as BaseElement);
 
     const fabricShape = this.createFabricShape(shape);
     this.extend(fabricShape, shape.id);
@@ -212,9 +237,6 @@ export class EditorCanvasService {
     if (!this.canvas) {
       throw new Error('Canvas not initialized');
     }
-
-    // If no binding value or it's a placeholder, use preview value
-    const hasRealValue = bindingValue && !bindingValue.startsWith('${');
 
     const qrElement: QRCodeElement = {
       type: 'qrcode',
@@ -230,17 +252,14 @@ export class EditorCanvasService {
     };
 
     // Generate QR code image - only if has real value
-    let qrDataUrl: string;
-    if (hasRealValue) {
-      qrDataUrl = this.generateQRCodeDataUrl(bindingValue!, 100);
-    } else {
-      qrDataUrl = this.createPlaceholderDataUrl('QR', 100);
-    }
+    let qrDataUrl: string  = this.createPlaceholderDataUrl('QR', qrElement.width,qrElement.height);
 
     const img = await FabricImage.fromURL(qrDataUrl);
     img.set({
       left: 24,
       top: 24,
+      width: qrElement.width,
+      height: qrElement.height,
       scaleX: 1,
       scaleY: 1
     });
@@ -262,7 +281,7 @@ export class EditorCanvasService {
     });
 
     // Register BEFORE adding to canvas so selection can find it
-    this.elementRegistry.set(qrElement.id, qrElement);
+    this.elementRegistry.set(qrElement.id, qrElement as unknown as BaseElement);
 
     this.extend(img, qrElement.id);
     this.canvas.add(img as any);
@@ -275,10 +294,6 @@ export class EditorCanvasService {
     if (!this.canvas) {
       throw new Error('Canvas not initialized');
     }
-
-    // If no binding value or it's a placeholder, use preview value
-    const hasRealValue = bindingValue && !bindingValue.startsWith('${');
-
     const barcodeElement: BarcodeElement = {
       type: 'barcode',
       id: this.randomId(),
@@ -292,17 +307,14 @@ export class EditorCanvasService {
     };
 
     // Generate barcode image - only if has real value
-    let barcodeDataUrl: string;
-    if (hasRealValue) {
-      barcodeDataUrl = this.generateBarcodeDataUrl(bindingValue!, format);
-    } else {
-      barcodeDataUrl = this.createPlaceholderDataUrl('BC', 200);
-    }
+    let barcodeDataUrl: string = this.createPlaceholderDataUrl('BC', barcodeElement.width,barcodeElement.height)
 
     const img = await FabricImage.fromURL(barcodeDataUrl);
     img.set({
       left: 24,
       top: 24,
+      width: barcodeElement.width,
+      height: barcodeElement.height,
       scaleX: 1,
       scaleY: 1
     });
@@ -322,7 +334,7 @@ export class EditorCanvasService {
     });
 
     // Register BEFORE adding to canvas so selection can find it
-    this.elementRegistry.set(barcodeElement.id, barcodeElement);
+    this.elementRegistry.set(barcodeElement.id, barcodeElement as unknown as BaseElement);
 
     this.extend(img, barcodeElement.id);
     this.canvas.add(img as any);
@@ -609,7 +621,51 @@ export class EditorCanvasService {
       return '';
     }
 
+    this.normalizeTextStylesFontFamily();
+
+    // 对 image 元素（barcode/qrcode 等）不做归一化：
+    // setSelectionWidth/Height 已经把 obj.width/height 锁定为 elementRegistry
+    // 里的业务字段（设计尺寸），scaleX/scaleY 反映用户的视觉调整。
+    // 如果这里归一化为 obj.width = 视觉宽度，会丢失业务字段，
+    // 让 PDF 路径上的比例偏离用户设计。
+    //
+    // 对其他元素（text/shape 等）保留原 Fabric 序列化（width × scaleX
+    // 的派生组合由 Fabric 自己处理，编辑器加载后能正确还原）。
     return JSON.stringify(this.canvas.toJSON());
+  }
+
+  /**
+   * 保存前归一化：把每个文本对象 styles 数组中所有区段的 fontFamily
+   * 强制覆盖为外层 fontFamily，避免 styles 内遗留旧字体（如 Arial）
+   * 导致 PDF 渲染中文时回退失败。
+   */
+  private normalizeTextStylesFontFamily(): void {
+    if (!this.canvas) return;
+
+    for (const obj of this.canvas.getObjects() as any[]) {
+      if (!obj || (obj.type !== 'text' && obj.type !== 'i-text' && obj.type !== 'textbox')) {
+        continue;
+      }
+      const outerFont = obj.fontFamily as string | undefined;
+      if (!outerFont) continue;
+
+      // 同样要通过 fabric API，否则 fabric 序列化时会还原为内部存储的旧值
+      if (typeof (obj as any).setSelectionStyles === 'function') {
+        const text = (obj.text ?? '') as string;
+        if (text.length === 0) continue;
+
+        // 只在 styles 中存在与外层不一致的字体时才调 setSelectionStyles
+        const styles = (obj as any).styles as Array<{ style?: Record<string, unknown> }> | undefined;
+        if (!Array.isArray(styles) || styles.length === 0) continue;
+
+        const hasInconsistent = styles.some(
+          r => r?.style && r.style['fontFamily'] && r.style['fontFamily'] !== outerFont
+        );
+        if (hasInconsistent) {
+          (obj as any).setSelectionStyles({ fontFamily: outerFont }, 0, text.length);
+        }
+      }
+    }
   }
 
   /**
@@ -617,7 +673,7 @@ export class EditorCanvasService {
    * This is the proper format for storing, not raw Fabric JSON
    */
   serializeToTemplate(): string {
-    const elements: LabelElement[] = [];
+    const elements: BaseElement[] = [];
     this.elementRegistry.forEach((element) => {
       elements.push(element);
     });
@@ -694,7 +750,7 @@ export class EditorCanvasService {
         // Create basic element model for registry
         const objType = this.getElementType(object);
         const element = this.createElementModel(object, objType);
-        this.elementRegistry.set(id, element);
+        this.elementRegistry.set(id, element as unknown as BaseElement);
       });
     }
 
@@ -800,6 +856,9 @@ export class EditorCanvasService {
         if (object.type === 'image') {
           return {
             ...baseState,
+            // 与 qrcode 分支保持一致：把 bindingValue 暴露为 text，
+            // 属性面板 Value 字段（[ngModel]="selectionState().text"）才能显示
+            text: (object as any).bindingValue ?? '',
             barcodeFormat: (object as any).barcodeFormat ?? 'CODE128',
             showText: (object as any).showText ?? true,
           };
@@ -855,7 +914,7 @@ export class EditorCanvasService {
     return 'shape';
   }
 
-  private getObjectElement(object: any): LabelElement | undefined {
+  private getObjectElement(object: any): BaseElement | undefined {
     const id = this.getObjectId(object);
     return this.elementRegistry.get(id);
   }
@@ -880,7 +939,23 @@ export class EditorCanvasService {
   setSelectionWidth(width: number): void {
     const object = this.canvas?.getActiveObject();
     if (!object) return;
-    object.set({ width: Number(width), scaleX: 1 });
+    const visualWidth = Number(width);
+    if ((object as any).type === 'image') {
+      // 改 W：当前 obj 视觉宽设为输入值，视觉高保持不变（obj.height × obj.scaleY）。
+      // 然后把视觉尺寸整体作为新的 designW/designH，scaleX/Y=1。
+      // 这样 elementRegistry.width/height 永远是"用户最新设计尺寸"，
+      // PDF 路径用 designW/designH（也就是 obj.width/obj.height）比例渲染，不被拉伸。
+      const visualHeight = (object.height || 1) * (object.scaleY || 1);
+      object.set({
+        width: visualWidth,
+        height: visualHeight,
+        scaleX: 1,
+        scaleY: 1
+      });
+      this.updateElementSize(object, visualWidth, visualHeight);
+    } else {
+      object.set({ width: visualWidth, scaleX: 1 });
+    }
     this.canvas?.requestRenderAll();
     this.touchRevision();
   }
@@ -888,9 +963,34 @@ export class EditorCanvasService {
   setSelectionHeight(height: number): void {
     const object = this.canvas?.getActiveObject();
     if (!object) return;
-    object.set({ height: Number(height), scaleY: 1 });
+    const visualHeight = Number(height);
+    if ((object as any).type === 'image') {
+      const visualWidth = (object.width || 1) * (object.scaleX || 1);
+      object.set({
+        width: visualWidth,
+        height: visualHeight,
+        scaleX: 1,
+        scaleY: 1
+      });
+      this.updateElementSize(object, visualWidth, visualHeight);
+    } else {
+      object.set({ height: visualHeight, scaleY: 1 });
+    }
     this.canvas?.requestRenderAll();
     this.touchRevision();
+  }
+
+  /**
+   * 把 obj 当前的视觉尺寸同步到 elementRegistry（用户设计字段）。
+   * 同步 width/height + x/y，让 PDF 路径按最新设计渲染。
+   */
+  private updateElementSize(object: any, designW: number, designH: number): void {
+    const el = this.getObjectElement(object);
+    if (!el) return;
+    (el as any).width = designW;
+    (el as any).height = designH;
+    (el as any).x = object.left;
+    (el as any).y = object.top;
   }
 
   setSelectionLength(length: number): void {
@@ -954,7 +1054,28 @@ export class EditorCanvasService {
   }
 
   setSelectionFontFamily(fontFamily: string): void {
-    this.setActiveProp('fontFamily', fontFamily);
+    const object = this.canvas?.getActiveObject() as IText | null;
+    if (!object) {
+      this.setActiveProp('fontFamily', fontFamily);
+      return;
+    }
+
+    // 1. 改外层 fontFamily
+    object.set('fontFamily', fontFamily);
+
+    // 2. 用 fabric 官方 API 改写整个文本的 styles（覆盖 0..text.length 全部字符）
+    //    直接改 obj.styles[i].style.fontFamily 不会真正生效，
+    //    因为 fabric 内部用 TextStyleDeclaration 维护状态，外部修改 array 元素会被忽略
+    if (typeof (object as any).setSelectionStyles === 'function') {
+      const text = (object.text ?? '') as string;
+      if (text.length > 0) {
+        (object as any).setSelectionStyles({ fontFamily }, 0, text.length);
+      }
+    }
+
+    object.setCoords();
+    this.canvas?.requestRenderAll();
+    this.touchRevision();
   }
 
   setSelectionStroke(stroke: string): void {
@@ -977,21 +1098,30 @@ export class EditorCanvasService {
     this.setActiveStyle('fill', color);
   }
 
-  updateBarcodeProperties(format: string, showText: boolean, bindingValue?: string): void {
+  updateBarcodeProperties(format?: string, showText?: boolean, bindingValue?: string): void {
     const object = this.canvas?.getActiveObject();
     if (!object) return;
     const element = this.getObjectElement(object) as BarcodeElement | undefined;
     if (element) {
-      element.format = format as BarcodeElement['format'];
-      element.showText = showText;
-      if (bindingValue !== undefined) {
+      if(format) {
+        element.format = format as BarcodeElement['format'];
+      }
+      if (showText) {
+        element.showText = showText;
+      }
+
+      if (bindingValue) {
         element.value = bindingValue;
       }
     }
     // Also update the Fabric object properties directly for serialization
-    (object as any).barcodeFormat = format;
-    (object as any).showText = showText;
-    if (bindingValue !== undefined) {
+    if(format) {
+      (object as any).barcodeFormat = format;
+    }
+    if(showText) {
+      (object as any).showText = showText;
+    }
+    if (bindingValue) {
       (object as any).bindingValue = bindingValue;
     }
     this.canvas?.requestRenderAll();
@@ -1241,11 +1371,11 @@ export class EditorCanvasService {
   // Element Registry
   // ============================================================
 
-  getElementById(id: string): LabelElement | undefined {
+  getElementById(id: string): BaseElement | undefined {
     return this.elementRegistry.get(id);
   }
 
-  getAllElements(): LabelElement[] {
+  getAllElements(): BaseElement[] {
     return Array.from(this.elementRegistry.values());
   }
 
@@ -1277,7 +1407,7 @@ export class EditorCanvasService {
         id: 'multi-select-marker',
         x: 0, y: 0, width: 0, height: 0
       };
-      this.selected.set(dummyElement);
+      this.selected.set(dummyElement as unknown as BaseElement);
       this.textEditorVisible.set(false);
       this.figureEditorVisible.set(false);
     } else {
@@ -1321,7 +1451,12 @@ export class EditorCanvasService {
     }
   }
 
-  private selectItemAfterAdded(obj: any): void {
+  /**
+   * Selects and activates a Fabric object right after it has been added to
+   * the canvas, triggering selection handlers and editor visibility updates.
+   * Used by element render() / add helpers to give the user immediate feedback.
+   */
+  protected selectItemAfterAdded(obj: any): void {
     if (!this.canvas) {
       return;
     }
@@ -1332,7 +1467,10 @@ export class EditorCanvasService {
     this.handleSelection(obj);
   }
 
-  private extend(obj: any, id: string | number): void {
+  /**
+   * Called by element render() methods to attach element id to Fabric object.
+   */
+  protected extend(obj: any, id: string | number): void {
     const originalToObject = obj.toObject;
     obj.toObject = ((toObject) => () => ({
       ...toObject.call(obj),
@@ -1340,7 +1478,12 @@ export class EditorCanvasService {
     }))(originalToObject);
   }
 
-  private extendWithBarcodeProperties(obj: any, props: Record<string, any>): void {
+  /**
+   * Attaches barcode/qrcode-specific properties to a Fabric object and extends
+   * its toObject so the custom fields survive serialization. Called by element
+   * render() methods via the RenderContext.
+   */
+  protected extendWithBarcodeProperties(obj: any, props: Record<string, any>): void {
     // Assign properties directly to the object
     Object.assign(obj, props);
 
@@ -1361,55 +1504,32 @@ export class EditorCanvasService {
     };
   }
 
-  generateQRCodeDataUrl(value: string, size: number): string {
-    try {
-      // Use qrcode library to generate QR code to canvas
-      // margin: 1 留 1 个模块的白色静默区（~4px）作为缓冲
-      // 防止 PDF 渲染时把贴边的 QR 模块裁掉
-      // 之前 margin: 0 会出现"最下面一行方块底边被裁"的问题
-      // 之前默认 margin: 4 又有"明显白色边"的问题
-      // margin: 1 是兼顾完整性和紧凑性的折中值
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      (QRCode as any).toCanvas(canvas, value, { width: size, margin: 1 });
-      return canvas.toDataURL('image/png');
-    } catch (e) {
-      console.error('QR code generation failed:', e);
-      return this.createPlaceholderDataUrl('QR', size);
-    }
-  }
-
-  generateBarcodeDataUrl(value: string, format: string): string {
-    try {
-      // Use jsbarcode library to generate barcode
-      const JsBarcode = (window as any).JsBarcode;
-      const canvas = document.createElement('canvas');
-      JsBarcode(canvas, value, { format });
-      return canvas.toDataURL('image/png');
-    } catch (e) {
-      console.error('Barcode generation failed:', e);
-      return this.createPlaceholderDataUrl('BC', 200);
-    }
-  }
-
-  private createPlaceholderDataUrl(text: string, size: number): string {
+  /**
+   * Generates a small gray placeholder PNG data URL used as the initial image
+   * for barcode/qrcode elements before any binding value is rendered. Exposed
+   * via RenderContext so elements can call it during render().
+   */
+  protected createPlaceholderDataUrl(text: string, w: number,h:number): string {
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size / 2;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(0, 0, size, size / 2);
+      ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = '#999';
       ctx.font = '12px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(text, size / 2, size / 4);
+      ctx.fillText(text, w / 2, h / 2);
     }
     return canvas.toDataURL('image/png');
   }
 
-  private randomId(): string {
+  /**
+   * Generates a unique element id. Exposed via RenderContext so element
+   * render() methods can assign ids without depending on internals.
+   */
+  protected randomId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
@@ -1543,7 +1663,12 @@ export class EditorCanvasService {
   // Element Model Creation
   // ============================================================
 
-  private createElementModel(object: any, type: EditorSelectionState['type']): LabelElement {
+  /**
+   * Builds a LabelElement model from a Fabric object and a coarse type tag.
+   * Kept on the service during the migration; removed in Task 10 once
+   * elements own their own toJSON() implementations.
+   */
+  protected createElementModel(object: any, type: EditorSelectionState['type']): LabelElement {
     const base = {
       id: this.getObjectId(object),
       type: type as ElementType,
@@ -1611,7 +1736,12 @@ export class EditorCanvasService {
     }
   }
 
-  private createFabricShape(element: LabelElement): any {
+  /**
+   * Builds a Fabric shape object from a LabelElement. Kept on the service
+   * during the migration; removed in Task 10 once elements own their own
+   * render() implementations.
+   */
+  protected createFabricShape(element: LabelElement): any {
     switch (element.type) {
       case 'rect':
         return new Rect({
