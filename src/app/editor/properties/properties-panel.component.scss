@@ -1,0 +1,13 @@
+/* src/app/editor/properties/properties-panel.component.scss */
+
+/* This file holds the shared selectors used by every property-panel
+   sub-component (.property-stack, .inline-row, .color-input-row,
+   .text-style-row, .checkbox-label, .bg-preview, .muted, .icon-button,
+   etc.). Each sub-component imports this file via its styleUrl.
+
+   The full rules are copied verbatim from editor-properties-panel.scss
+   in the next step. */
+
+.placeholder {
+  display: none;
+}
