@@ -4,16 +4,19 @@ import { BaseElement, type RenderContext } from './element-base';
 
 export interface TriangleElementData {
   id: string;
+  type: 'triangle';
   x: number;
   y: number;
   width: number;
   height: number;
+  lock?: boolean;
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
   rotation?: number;
   visible?: boolean;
   opacity?: number;
+  [key: string]: unknown;
 }
 
 export class TriangleElement extends BaseElement {
@@ -56,6 +59,7 @@ export class TriangleElement extends BaseElement {
   static fromFabricObject(obj: any, id: string): TriangleElement {
     return new TriangleElement({
       id,
+      type: 'triangle',
       x: obj.left ?? 0, y: obj.top ?? 0,
       width: (obj.width ?? 100) * (obj.scaleX ?? 1),
       height: (obj.height ?? 100) * (obj.scaleY ?? 1),

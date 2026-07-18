@@ -5,10 +5,12 @@ import { DEFAULT_SELECTION_STATE } from './editor.models';
 
 export interface TextElementData {
   id: string;
+  type: 'text';
   x: number;
   y: number;
-  width?: number;
+  width: number;
   height?: number;
+  lock?: boolean;
   text?: string;
   fontSize?: number;
   fontFamily?: string;
@@ -23,6 +25,7 @@ export interface TextElementData {
   rotation?: number;
   visible?: boolean;
   opacity?: number;
+  [key: string]: unknown;
 }
 
 export class TextElement extends BaseElement {
@@ -112,6 +115,7 @@ export class TextElement extends BaseElement {
   static fromFabricObject(obj: any, id: string): TextElement {
     return new TextElement({
       id,
+      type: 'text',
       x: obj.left ?? 0,
       y: obj.top ?? 0,
       width: (obj.width ?? 100) * (obj.scaleX ?? 1),

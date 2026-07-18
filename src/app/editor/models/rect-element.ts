@@ -4,10 +4,12 @@ import { BaseElement, type RenderContext } from './element-base';
 
 export interface RectElementData {
   id: string;
+  type: 'rect';
   x: number;
   y: number;
   width: number;
   height: number;
+  lock?: boolean;
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
@@ -15,6 +17,7 @@ export interface RectElementData {
   rotation?: number;
   visible?: boolean;
   opacity?: number;
+  [key: string]: unknown;
 }
 
 export class RectElement extends BaseElement {
@@ -63,6 +66,7 @@ export class RectElement extends BaseElement {
   static fromFabricObject(obj: any, id: string): RectElement {
     return new RectElement({
       id,
+      type: 'rect',
       x: obj.left ?? 0, y: obj.top ?? 0,
       width: (obj.width ?? 100) * (obj.scaleX ?? 1),
       height: (obj.height ?? 100) * (obj.scaleY ?? 1),
