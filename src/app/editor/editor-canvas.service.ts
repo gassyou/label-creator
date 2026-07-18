@@ -15,6 +15,7 @@ import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, RectElement, T
 import { Label, millimetersToPixels } from './models/label.models';
 import QRCode from 'qrcode';
 import { BaseElement, type RenderContext } from './models/element-base';
+import { ElementFactory } from './models/element-factory';
 import { EditorCommand } from './commands/editor-command';
 import { AddTextCommand } from './commands/add-text.command';
 import { AddShapeCommand } from './commands/add-shape.command';
@@ -577,9 +578,8 @@ export class EditorCanvasService {
         }
 
         // Create basic element model for registry
-        const objType = this.getElementType(object);
-        const element = this.createElementModel(object, objType);
-        this.elementRegistry.set(id, element as unknown as BaseElement);
+        const element = ElementFactory.fromFabricObject(object, id);
+        this.elementRegistry.set(id, element);
       });
     }
 
@@ -1486,160 +1486,6 @@ export class EditorCanvasService {
         onApplied(compressed);
       });
     });
-  }
-
-  // ============================================================
-  // Element Model Creation
-  // ============================================================
-
-  /**
-   * Builds a LabelElement model from a Fabric object and a coarse type tag.
-   * Kept on the service during the migration; removed in Task 10 once
-   * elements own their own toJSON() implementations.
-   */
-  protected createElementModel(object: any, type: EditorSelectionState['type']): LabelElement {
-    const base = {
-      id: this.getObjectId(object),
-      type: type as ElementType,
-      x: object.left ?? 0,
-      y: object.top ?? 0,
-      width: (object.width ?? 100) * (object.scaleX ?? 1),
-      height: (object.height ?? 100) * (object.scaleY ?? 1),
-      rotation: object.angle ?? 0,
-      opacity: object.opacity ?? 1,
-      visible: object.visible ?? true,
-      lock: !object.selectable,
-      bindingValue: (object as any).bindingValue ?? ''
-    };
-
-    switch (type) {
-      case 'text':
-        return {
-          ...base,
-          type: 'text',
-          text: (object as IText).text ?? '',
-          fontSize: object.fontSize ?? 16,
-          fontFamily: object.fontFamily ?? 'Helvetica',
-          fontWeight: object.fontWeight ?? '',
-          fontStyle: object.fontStyle ?? '',
-          align: object.textAlign ?? 'left',
-          color: object.fill ?? '#000000',
-          lineHeight: object.lineHeight ?? 1.16,
-          charSpacing: object.charSpacing ?? 0
-        } as TextElement;
-      case 'shape':
-        return {
-          ...base,
-          type: 'rect',
-          fill: object.fill ?? '#000000',
-          stroke: object.stroke ?? '',
-          strokeWidth: object.strokeWidth ?? 0,
-          radius: object.rx ?? 0
-        } as RectElement;
-      case 'line':
-        return {
-          ...base,
-          type: 'line',
-          stroke: object.stroke ?? '#000000',
-          strokeWidth: object.strokeWidth ?? 1
-        } as LineElement;
-      case 'qrcode':
-        return {
-          ...base,
-          type: 'qrcode' as const,
-          value: object.bindingValue ?? '',
-          errorCorrectionLevel: object.errorCorrectionLevel ?? 'M',
-          foregroundColor: object.foregroundColor ?? '#000000',
-          backgroundColor: object.backgroundColor ?? '#ffffff'
-        } as QRCodeElement;
-      case 'barcode':
-        return {
-          ...base,
-          type: 'barcode' as const,
-          format: object.barcodeFormat ?? 'CODE128',
-          value: object.bindingValue ?? '',
-          showText: object.showText ?? true
-        } as BarcodeElement;
-      default:
-        return base as LabelElement;
-    }
-  }
-
-  /**
-   * Builds a Fabric shape object from a LabelElement. Kept on the service
-   * during the migration; removed in Task 10 once elements own their own
-   * render() implementations.
-   */
-  protected createFabricShape(element: LabelElement): any {
-    switch (element.type) {
-      case 'rect':
-        return new Rect({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          fill: (element as RectElement).fill ?? '#000000',
-          stroke: (element as RectElement).stroke || undefined,
-          strokeWidth: (element as RectElement).strokeWidth || 0,
-          rx: (element as RectElement).radius
-        });
-      case 'circle':
-        return new Circle({
-          left: element.x,
-          top: element.y,
-          radius: element.width / 2,
-          fill: (element as CircleElement).fill ?? '#000000',
-          stroke: (element as CircleElement).stroke || undefined,
-          strokeWidth: (element as CircleElement).strokeWidth || 0
-        });
-      case 'triangle':
-        return new Triangle({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          fill: (element as TriangleElement).fill ?? '#000000',
-          stroke: (element as TriangleElement).stroke || undefined,
-          strokeWidth: (element as TriangleElement).strokeWidth || 0
-        });
-      case 'qrcode':
-        return new Rect({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          fill: (element as QRCodeElement).backgroundColor ?? '#ffffff',
-          stroke: (element as QRCodeElement).foregroundColor ?? '#000000',
-          strokeWidth: 2
-        });
-      case 'barcode':
-        return new Rect({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          fill: '#ffffff',
-          stroke: '#000000',
-          strokeWidth: 1
-        });
-      case 'line': {
-        const lineEl = element as LineElement;
-        // Line uses x, y as start point and width as horizontal length
-        const line = new Line([lineEl.x, lineEl.y, lineEl.x + lineEl.width, lineEl.y], {
-          stroke: lineEl.stroke || '#000000',
-          strokeWidth: lineEl.strokeWidth || 1
-        });
-        return line;
-      }
-      default:
-        return new Rect({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          fill: '#cccccc'
-        });
-    }
   }
 
   // ============================================================
