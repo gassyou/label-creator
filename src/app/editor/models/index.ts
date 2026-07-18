@@ -1,6 +1,11 @@
 // src/app/editor/models/index.ts
 export * from './label.models';
-export * from './editor.models';
+export type {
+  EditorSelectionState,
+  DEFAULT_SELECTION_STATE,
+  EditorTool,
+  ElementType
+} from './editor.models';
 export * from './element-base';
 export * from './element-factory';
 export * from './text-element';
