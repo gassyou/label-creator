@@ -17,6 +17,7 @@ import QRCode from 'qrcode';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { EditorCommand } from './commands/editor-command';
 import { AddTextCommand } from './commands/add-text.command';
+import { AddShapeCommand } from './commands/add-shape.command';
 
 
 @Injectable()
@@ -176,76 +177,10 @@ export class EditorCanvasService {
     return cmd.element!;
   }
 
-  addShape(shapeType: 'square' | 'triangle' | 'circle' | 'line'): LabelElement {
-    if (!this.canvas) {
-      throw new Error('Canvas not initialized');
-    }
-
-    let shape: LabelElement;
-
-    switch (shapeType) {
-      case 'square':
-        shape = {
-          type: 'rect',
-          id: this.randomId(),
-          x: 24,
-          y: 24,
-          width: 100,
-          height: 100,
-          fill: '#059669',
-          stroke: '#374151',
-          strokeWidth: 2
-        } as RectElement;
-        break;
-      case 'triangle':
-        shape = {
-          type: 'triangle',
-          id: this.randomId(),
-          x: 24,
-          y: 24,
-          width: 100,
-          height: 100,
-          fill: '#0ea5e9',
-          stroke: '#374151',
-          strokeWidth: 2
-        } as TriangleElement;
-        break;
-      case 'circle':
-        shape = {
-          type: 'circle',
-          id: this.randomId(),
-          x: 24,
-          y: 24,
-          width: 100,
-          height: 100,
-          fill: '#f97316',
-          stroke: '#374151',
-          strokeWidth: 2
-        } as CircleElement;
-        break;
-      case 'line':
-        shape = {
-          type: 'line',
-          id: this.randomId(),
-          x: 24,
-          y: 24,
-          width: 100,
-          height: 2,
-          stroke: '#000000',
-          strokeWidth: 2
-        } as LineElement;
-        break;
-    }
-
-    // Register element before adding to canvas
-    this.elementRegistry.set(shape.id, shape as unknown as BaseElement);
-
-    const fabricShape = this.createFabricShape(shape);
-    this.extend(fabricShape, shape.id);
-    this.canvas.add(fabricShape);
-    this.selectItemAfterAdded(fabricShape);
-
-    return shape;
+  async addShape(shapeType: 'square' | 'triangle' | 'circle' | 'line'): Promise<BaseElement> {
+    const cmd = new AddShapeCommand(shapeType);
+    await this.execute(cmd);
+    return cmd.element!;
   }
 
   async addQRCode(bindingValue?: string): Promise<QRCodeElement> {

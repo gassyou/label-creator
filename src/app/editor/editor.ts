@@ -220,7 +220,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'circle':
       case 'triangle':
       case 'line':
-        this.canvasService.addShape(tool);
+        void this.canvasService.addShape(tool);
         return;
       case 'qrcode':
         this.canvasService.addQRCode();
