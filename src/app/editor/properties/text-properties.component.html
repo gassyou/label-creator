@@ -1,0 +1,101 @@
+<!-- src/app/editor/properties/text-properties.component.html -->
+@let s = state();
+@if (s) {
+  <label>
+    <span>Color</span>
+    <div class="color-input-row">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          [checked]="!$any(s).color"
+          (change)="onColorNoneToggle($any($event.target).checked)"
+        />
+        <span>None</span>
+      </label>
+      <input
+        type="color"
+        [ngModel]="$any(s).color"
+        (ngModelChange)="onColorChange($event)"
+        [disabled]="!$any(s).color"
+      />
+    </div>
+  </label>
+
+  <label>
+    <span>Font Family</span>
+    <select
+      [ngModel]="$any(s).fontFamily"
+      (ngModelChange)="onFontFamilyChange($event)"
+    >
+      <option value="Liberation Sans">Liberation Sans</option>
+      <option value="Noto Sans SC">Noto Sans SC</option>
+    </select>
+  </label>
+
+  <label>
+    <span>Font Size</span>
+    <input
+      type="number"
+      min="8"
+      [ngModel]="$any(s).fontSize"
+      (ngModelChange)="onFontSizeChange($event)"
+    />
+  </label>
+
+  <div class="text-style-row">
+    <button
+      type="button"
+      class="icon-button"
+      [class.active]="$any(s).fontWeight === 'bold'"
+      (click)="onBoldToggle()"
+      title="Bold"
+    >
+      <span nz-icon nzType="bold" nzTheme="outline"></span>
+    </button>
+    <button
+      type="button"
+      class="icon-button"
+      [class.active]="$any(s).fontStyle === 'italic'"
+      (click)="onItalicToggle()"
+      title="Italic"
+    >
+      <span nz-icon nzType="italic" nzTheme="outline"></span>
+    </button>
+    <button
+      type="button"
+      class="icon-button"
+      [class.active]="($any(s).textDecoration ?? '').includes('underline')"
+      (click)="onUnderlineToggle()"
+      title="Underline"
+    >
+      <span nz-icon nzType="underline" nzTheme="outline"></span>
+    </button>
+    <button
+      type="button"
+      class="icon-button"
+      [class.active]="$any(s).textAlign === 'left'"
+      (click)="onAlignChange('left')"
+      title="Align Left"
+    >
+      <span nz-icon nzType="align-left" nzTheme="outline"></span>
+    </button>
+    <button
+      type="button"
+      class="icon-button"
+      [class.active]="$any(s).textAlign === 'center'"
+      (click)="onAlignChange('center')"
+      title="Align Center"
+    >
+      <span nz-icon nzType="align-center" nzTheme="outline"></span>
+    </button>
+    <button
+      type="button"
+      class="icon-button"
+      [class.active]="$any(s).textAlign === 'right'"
+      (click)="onAlignChange('right')"
+      title="Align Right"
+    >
+      <span nz-icon nzType="align-right" nzTheme="outline"></span>
+    </button>
+  </div>
+}
