@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { Toolbar, ToolbarWidget, ToolbarWidgetGroup } from '@angular/aria/toolbar';
 import { NzIconModule } from 'ng-zorro-antd/icon';
+import { EditorCanvasService } from './editor-canvas.service';
 
 @Component({
   selector: 'app-editor-topbar',
@@ -10,6 +11,10 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
   styleUrl: './editor-topbar.scss'
 })
 export class EditorTopbarComponent {
+  protected readonly canvasService = inject(EditorCanvasService);
+  protected readonly canUndo = this.canvasService.canUndoSignal;
+  protected readonly canRedo = this.canvasService.canRedoSignal;
+
   readonly hasSelection = input(false);
   readonly hasMultiSelection = input(false);
   readonly zoom = input(1);

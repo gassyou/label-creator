@@ -49,6 +49,11 @@
       </button>
     </div>
 
+    <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="History actions">
+      <button type="button" (click)="canvasService.undo()" [disabled]="!canUndo()">Undo</button>
+      <button type="button" (click)="canvasService.redo()" [disabled]="!canRedo()">Redo</button>
+    </div>
+
     <div ngToolbarWidgetGroup class="toolbar-cluster" [multi]="true" role="group" aria-label="Selection actions">
       <button
         type="button"
