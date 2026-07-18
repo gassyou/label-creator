@@ -19,6 +19,7 @@ export interface BarcodeElementData {
   rotation?: number;
   visible?: boolean;
   opacity?: number;
+  color?: string;
   [key: string]: unknown;
 }
 
@@ -28,6 +29,7 @@ export class BarcodeElement extends BaseElement {
   value?: string;
   binding?: string;
   showText?: boolean;
+  color?: string;
 
   constructor(data: BarcodeElementData) {
     super();
@@ -67,7 +69,8 @@ export class BarcodeElement extends BaseElement {
       id: this.id, type: 'barcode' as const,
       x: this.x, y: this.y, width: this.width, height: this.height,
       rotation: this.rotation, visible: this.visible, opacity: this.opacity, lock: this.lock,
-      format: this.format, value: this.value, binding: this.binding, showText: this.showText
+      format: this.format, value: this.value, binding: this.binding, showText: this.showText,
+      color: this.color
     };
   }
 
@@ -85,7 +88,8 @@ export class BarcodeElement extends BaseElement {
       format: obj.barcodeFormat ?? 'CODE128',
       value: obj.bindingValue ?? '',
       binding: obj.bindingValue ?? '',
-      showText: obj.showText ?? true
+      showText: obj.showText ?? true,
+      color: obj.foreground ?? obj.fill
     });
   }
 }

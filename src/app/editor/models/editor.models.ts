@@ -60,20 +60,6 @@ export type ElementType =
   | 'qrcode'
   | 'image';
 
-export interface BaseElement {
-  id: string;
-  type: ElementType;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation?: number;
-  visible?: boolean;
-  lock?: boolean;
-  zIndex?: number;
-  opacity?: number;
-}
-
 // ============================================================
 // Element data-shape re-exports (Task 7: replace interfaces with
 // re-exports of the new element *Data interfaces).

@@ -40,6 +40,7 @@ export class EditorCanvasService {
   private undoStack: string[] = [];
   private redoStack: string[] = [];
   private maxUndoLevels = 50;
+  private undoInFlight = false;
 
   initialize(element: HTMLCanvasElement, canvasState: { width: number; height: number; backgroundColor: string; backgroundImage?: string }): void {
     this.canvas?.dispose();
@@ -98,10 +99,12 @@ export class EditorCanvasService {
   }
 
   undo(): void {
+    if (this.undoInFlight) return;
     if (this.undoStack.length === 0 || !this.canvas) return;
     const current = JSON.stringify(this.canvas.toJSON());
     this.redoStack.push(current);
     const snapshot = this.undoStack.pop()!;
+    this.undoInFlight = true;
     this.hydrating = true;
     this.canvas.loadFromJSON(snapshot).then(() => {
       this.canvas?.discardActiveObject();
@@ -110,14 +113,17 @@ export class EditorCanvasService {
       this.touchRevision();
       this.canvas?.requestRenderAll();
       this.syncUndoSignals();
+      this.undoInFlight = false;
     });
   }
 
   redo(): void {
+    if (this.undoInFlight) return;
     if (this.redoStack.length === 0 || !this.canvas) return;
     const current = JSON.stringify(this.canvas.toJSON());
     this.undoStack.push(current);
     const snapshot = this.redoStack.pop()!;
+    this.undoInFlight = true;
     this.hydrating = true;
     this.canvas.loadFromJSON(snapshot).then(() => {
       this.canvas?.discardActiveObject();
@@ -126,6 +132,7 @@ export class EditorCanvasService {
       this.touchRevision();
       this.canvas?.requestRenderAll();
       this.syncUndoSignals();
+      this.undoInFlight = false;
     });
   }
 

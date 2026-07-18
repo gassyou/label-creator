@@ -485,7 +485,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   removeSelected(): void {
-    this.canvasService.removeSelected();
+    void this.canvasService.deleteSelected();
     this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
   }
 
