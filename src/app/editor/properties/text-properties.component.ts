@@ -48,21 +48,21 @@ export class TextPropertiesComponent {
   protected onBoldToggle(): void {
     const sel = this.state();
     if (!sel) return;
-    const cur = $any(sel).fontWeight === 'bold' ? 'normal' : 'bold';
+    const cur = (sel as any).fontWeight === 'bold' ? 'normal' : 'bold';
     this.doc.updateElement(sel.id, { fontWeight: cur } as any);
   }
 
   protected onItalicToggle(): void {
     const sel = this.state();
     if (!sel) return;
-    const cur = $any(sel).fontStyle === 'italic' ? 'normal' : 'italic';
+    const cur = (sel as any).fontStyle === 'italic' ? 'normal' : 'italic';
     this.doc.updateElement(sel.id, { fontStyle: cur } as any);
   }
 
   protected onUnderlineToggle(): void {
     const sel = this.state();
     if (!sel) return;
-    const cur = ($any(sel).textDecoration ?? '').includes('underline') ? '' : 'underline';
+    const cur = ((sel as any).textDecoration ?? '').includes('underline') ? '' : 'underline';
     this.doc.updateElement(sel.id, { textDecoration: cur } as any);
   }
 
