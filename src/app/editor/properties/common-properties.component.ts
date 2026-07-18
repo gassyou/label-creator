@@ -17,12 +17,6 @@ export class CommonPropertiesComponent {
 
   protected readonly state = computed(() => this.doc.selection());
 
-  protected onIdChange(id: string): void {
-    const sel = this.state();
-    if (!sel) return;
-    this.doc.updateElement(sel.id, { id } as any);
-  }
-
   protected onOpacityChange(opacityPct: number): void {
     const sel = this.state();
     if (!sel) return;

@@ -2,14 +2,6 @@
 @let s = state();
 @if (s) {
   <label>
-    <span>ID</span>
-    <input
-      type="text"
-      [ngModel]="s.id"
-      (ngModelChange)="onIdChange($event)"
-    />
-  </label>
-  <label>
     <span>Opacity {{ ((s as any).opacity ?? 1) * 100 | number:'1.0-0' }}%</span>
     <input
       type="range"
