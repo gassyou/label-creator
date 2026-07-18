@@ -34,6 +34,8 @@ export class EditorCanvasService {
   readonly jsonPreview = signal('');
   readonly revision = signal(0);
   readonly zoom = signal(1);
+  readonly canUndoSignal = signal(false);
+  readonly canRedoSignal = signal(false);
 
   public canvas: Canvas | null = null;
   private drawingModeEnabled = false;
@@ -94,12 +96,14 @@ export class EditorCanvasService {
   execute(command: EditorCommand): Promise<void> {
     this.pushUndoSnapshot();
     this.redoStack.length = 0;
+    this.syncUndoSignals();
     return Promise.resolve()
       .then(() => command.execute(this))
       .then(
         () => this.touchRevision(),
         (err) => {
           this.undoStack.pop();
+          this.syncUndoSignals();
           throw err;
         }
       );
@@ -117,6 +121,7 @@ export class EditorCanvasService {
       this.hydrating = false;
       this.touchRevision();
       this.canvas?.requestRenderAll();
+      this.syncUndoSignals();
     });
   }
 
@@ -132,6 +137,7 @@ export class EditorCanvasService {
       this.hydrating = false;
       this.touchRevision();
       this.canvas?.requestRenderAll();
+      this.syncUndoSignals();
     });
   }
 
@@ -143,6 +149,12 @@ export class EditorCanvasService {
     const snapshot = JSON.stringify(this.canvas.toJSON());
     this.undoStack.push(snapshot);
     if (this.undoStack.length > this.maxUndoLevels) this.undoStack.shift();
+    this.syncUndoSignals();
+  }
+
+  private syncUndoSignals(): void {
+    this.canUndoSignal.set(this.undoStack.length > 0);
+    this.canRedoSignal.set(this.redoStack.length > 0);
   }
 
   getDrawingModeEnabled(): boolean {

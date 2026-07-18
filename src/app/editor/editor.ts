@@ -176,12 +176,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    if (modifier && event.key === 'z') {
+    if (modifier && (event.key === 'z' || event.key === 'Z')) {
       event.preventDefault();
       if (event.shiftKey) {
-        this.canvasService.redo();
+        void this.canvasService.redo();
       } else {
-        this.canvasService.undo();
+        void this.canvasService.undo();
       }
       return;
     }
