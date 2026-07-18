@@ -1,0 +1,65 @@
+<!-- src/app/editor/properties/qrcode-properties.component.html -->
+@let s = state();
+@if (s) {
+  <label>
+    <span>Value</span>
+    <input
+      type="text"
+      [ngModel]="$any(s).text"
+      (ngModelChange)="onTextChange($event)"
+    />
+  </label>
+
+  <label>
+    <span>Foreground</span>
+    <div class="color-input-row">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          [checked]="!$any(s).foregroundColor"
+          (change)="onForegroundNoneToggle($any($event.target).checked)"
+        />
+        <span>None</span>
+      </label>
+      <input
+        type="color"
+        [ngModel]="$any(s).foregroundColor"
+        (ngModelChange)="onForegroundChange($event)"
+        [disabled]="!$any(s).foregroundColor"
+      />
+    </div>
+  </label>
+
+  <label>
+    <span>Background</span>
+    <div class="color-input-row">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          [checked]="!$any(s).backgroundColor"
+          (change)="onBackgroundNoneToggle($any($event.target).checked)"
+        />
+        <span>None</span>
+      </label>
+      <input
+        type="color"
+        [ngModel]="$any(s).backgroundColor"
+        (ngModelChange)="onBackgroundChange($event)"
+        [disabled]="!$any(s).backgroundColor"
+      />
+    </div>
+  </label>
+
+  <label>
+    <span>Error Correction</span>
+    <select
+      [ngModel]="$any(s).errorCorrectionLevel"
+      (ngModelChange)="onErrorCorrectionChange($event)"
+    >
+      <option value="L">Low (L)</option>
+      <option value="M">Medium (M)</option>
+      <option value="Q">Quartile (Q)</option>
+      <option value="H">High (H)</option>
+    </select>
+  </label>
+}
