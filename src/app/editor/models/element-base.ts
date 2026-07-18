@@ -32,5 +32,26 @@ export abstract class BaseElement {
   opacity?: number;
 
   abstract render(ctx: RenderContext): FabricObject | Promise<FabricObject>;
-  abstract toJSON(): Record<string, unknown>;
+  abstract toJSON(): SerializableElement;
+}
+
+/**
+ * Wire-format shape for any element's serialized form. Concrete *Data
+ * interfaces satisfy this structurally as long as they include at least
+ * { id, type, x, y, width, height } and may carry any extra element-specific
+ * fields.
+ */
+export interface SerializableElement {
+  id: string;
+  type: ElementType;
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+  rotation?: number;
+  visible?: boolean;
+  lock?: boolean;
+  zIndex?: number;
+  opacity?: number;
+  [key: string]: unknown;
 }
