@@ -1,19 +1,7 @@
 import { Injectable, signal } from '@angular/core';
-import {
-  Canvas,
-  Circle,
-  FabricImage,
-  IText,
-  Line,
-  Pattern,
-  Rect,
-  Textbox,
-  Triangle,
-  util as fabricUtil
-} from 'fabric';
-import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, ImageElement, EditorSelectionState, ElementType } from './models/editor.models';
+import { Canvas, FabricImage, IText, Pattern } from 'fabric';
+import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, QRCodeElement, BarcodeElement, ImageElement, EditorSelectionState } from './models/editor.models';
 import { Label, millimetersToPixels } from './models/label.models';
-import QRCode from 'qrcode';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { ElementFactory } from './models/element-factory';
 import { EditorCommand } from './commands/editor-command';
