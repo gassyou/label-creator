@@ -223,10 +223,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         void this.canvasService.addShape(tool);
         return;
       case 'qrcode':
-        this.canvasService.addQRCode();
+        void this.canvasService.addQRCode();
         return;
       case 'barcode':
-        this.canvasService.addBarcode('CODE128');
+        void this.canvasService.addBarcode('CODE128');
         return;
     }
   }

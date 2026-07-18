@@ -11,13 +11,16 @@ import {
   Triangle,
   util as fabricUtil
 } from 'fabric';
-import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, EditorSelectionState, ElementType } from './models/editor.models';
+import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, RectElement, TriangleElement, LineElement, QRCodeElement, BarcodeElement, CircleElement, ImageElement, EditorSelectionState, ElementType } from './models/editor.models';
 import { Label, millimetersToPixels } from './models/label.models';
 import QRCode from 'qrcode';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { EditorCommand } from './commands/editor-command';
 import { AddTextCommand } from './commands/add-text.command';
 import { AddShapeCommand } from './commands/add-shape.command';
+import { AddQRCodeCommand } from './commands/add-qrcode.command';
+import { AddBarcodeCommand } from './commands/add-barcode.command';
+import { AddImageCommand } from './commands/add-image.command';
 
 
 @Injectable()
@@ -184,135 +187,22 @@ export class EditorCanvasService {
   }
 
   async addQRCode(bindingValue?: string): Promise<QRCodeElement> {
-    if (!this.canvas) {
-      throw new Error('Canvas not initialized');
-    }
-
-    const qrElement: QRCodeElement = {
-      type: 'qrcode',
-      id: this.randomId(),
-      x: 24,
-      y: 24,
-      width: 100,
-      height: 100,
-      value: bindingValue || '',
-      errorCorrectionLevel: 'M',
-      foregroundColor: '#000000',
-      backgroundColor: '#ffffff'
-    };
-
-    // Generate QR code image - only if has real value
-    let qrDataUrl: string  = this.createPlaceholderDataUrl('QR', qrElement.width,qrElement.height);
-
-    const img = await FabricImage.fromURL(qrDataUrl);
-    img.set({
-      left: 24,
-      top: 24,
-      width: qrElement.width,
-      height: qrElement.height,
-      scaleX: 1,
-      scaleY: 1
-    });
-
-    // Set custom properties for barcode/qrcode
-    (img as any).elementType = 'qrcode';
-    (img as any).bindingValue = bindingValue || '';
-    (img as any).errorCorrectionLevel = 'M';
-    (img as any).foregroundColor = '#000000';
-    (img as any).backgroundColor = '#ffffff';
-
-    // Extend toObject to persist these properties
-    this.extendWithBarcodeProperties(img, {
-      elementType: 'qrcode',
-      bindingValue: bindingValue || '',
-      errorCorrectionLevel: 'M',
-      foregroundColor: '#000000',
-      backgroundColor: '#ffffff'
-    });
-
-    // Register BEFORE adding to canvas so selection can find it
-    this.elementRegistry.set(qrElement.id, qrElement as unknown as BaseElement);
-
-    this.extend(img, qrElement.id);
-    this.canvas.add(img as any);
-    this.selectItemAfterAdded(img as any);
-
-    return qrElement;
+    const cmd = new AddQRCodeCommand(bindingValue);
+    await this.execute(cmd);
+    return cmd.element!;
   }
 
   async addBarcode(format: BarcodeElement['format'], bindingValue?: string): Promise<BarcodeElement> {
-    if (!this.canvas) {
-      throw new Error('Canvas not initialized');
-    }
-    const barcodeElement: BarcodeElement = {
-      type: 'barcode',
-      id: this.randomId(),
-      x: 24,
-      y: 24,
-      width: 200,
-      height: 80,
-      format,
-      value: bindingValue || '',
-      showText: true
-    };
-
-    // Generate barcode image - only if has real value
-    let barcodeDataUrl: string = this.createPlaceholderDataUrl('BC', barcodeElement.width,barcodeElement.height)
-
-    const img = await FabricImage.fromURL(barcodeDataUrl);
-    img.set({
-      left: 24,
-      top: 24,
-      width: barcodeElement.width,
-      height: barcodeElement.height,
-      scaleX: 1,
-      scaleY: 1
-    });
-
-    // Set custom properties
-    (img as any).elementType = 'barcode';
-    (img as any).bindingValue = bindingValue || '';
-    (img as any).barcodeFormat = format;
-    (img as any).showText = true;
-
-    // Extend toObject
-    this.extendWithBarcodeProperties(img, {
-      elementType: 'barcode',
-      bindingValue: bindingValue || '',
-      barcodeFormat: format,
-      showText: true
-    });
-
-    // Register BEFORE adding to canvas so selection can find it
-    this.elementRegistry.set(barcodeElement.id, barcodeElement as unknown as BaseElement);
-
-    this.extend(img, barcodeElement.id);
-    this.canvas.add(img as any);
-    this.selectItemAfterAdded(img as any);
-
-    return barcodeElement;
+    const cmd = new AddBarcodeCommand(format, bindingValue);
+    await this.execute(cmd);
+    return cmd.element!;
   }
 
-  addImage(url: string): void {
-    if (!this.canvas || !url) {
-      return;
-    }
-
-    FabricImage.fromURL(url).then((image) => {
-      image.set({
-        left: 24,
-        top: 24,
-        angle: 0,
-        padding: 10,
-        cornerSize: 10,
-        hasRotatingPoint: true
-      });
-      image.scaleToWidth(220);
-      image.scaleToHeight(220);
-      this.extend(image, this.randomId());
-      this.canvas?.add(image as any);
-      this.selectItemAfterAdded(image as any);
-    });
+  async addImage(url: string): Promise<ImageElement | null> {
+    if (!url) return null;
+    const cmd = new AddImageCommand(url);
+    await this.execute(cmd);
+    return cmd.element!;
   }
 
   // ============================================================
