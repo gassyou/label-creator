@@ -14,6 +14,7 @@ export const ElementFactory = {
     const t = data['type'] as string;
     switch (t) {
       case 'text':    return TextElement.fromJSON(data as TextElementData);
+      case 'shape':
       case 'rect':    return RectElement.fromJSON(data as RectElementData);
       case 'circle':  return CircleElement.fromJSON(data as CircleElementData);
       case 'triangle':return TriangleElement.fromJSON(data as TriangleElementData);
@@ -25,18 +26,26 @@ export const ElementFactory = {
     }
   },
   fromFabricObject(obj: any, id: string): BaseElement {
-    const t = obj.elementType as string;
-    switch (t) {
-      case 'text':    return TextElement.fromFabricObject(obj, id);
-      case 'shape':
+    // Discriminator hierarchy:
+    //   1. obj.elementType — set by extendWithBarcodeProperties for qrcode/barcode
+    //      and by image-bearing elements. Wins over Fabric's intrinsic type.
+    //   2. obj.type — Fabric's intrinsic primitive name ('i-text', 'textbox',
+    //      'rect', 'circle', 'triangle', 'line', 'image'). Used for plain
+    //      elements that never get a custom elementType assigned.
+    const custom = obj.elementType as string | undefined;
+    if (custom === 'qrcode')  return QRCodeElement.fromFabricObject(obj, id);
+    if (custom === 'barcode') return BarcodeElement.fromFabricObject(obj, id);
+
+    const intrinsic = obj.type as string;
+    switch (intrinsic) {
+      case 'i-text':
+      case 'textbox': return TextElement.fromFabricObject(obj, id);
       case 'rect':    return RectElement.fromFabricObject(obj, id);
       case 'circle':  return CircleElement.fromFabricObject(obj, id);
       case 'triangle':return TriangleElement.fromFabricObject(obj, id);
       case 'line':    return LineElement.fromFabricObject(obj, id);
-      case 'qrcode':  return QRCodeElement.fromFabricObject(obj, id);
-      case 'barcode': return BarcodeElement.fromFabricObject(obj, id);
       case 'image':   return ImageElement.fromFabricObject(obj, id);
-      default: throw new Error(`Unknown element type on Fabric object: ${t}`);
+      default: throw new Error(`Unknown Fabric object type: ${intrinsic}`);
     }
   }
 };
