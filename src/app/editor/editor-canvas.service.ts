@@ -26,13 +26,13 @@ export class EditorCanvasService {
   readonly revision = signal(0);
   readonly zoom = signal(1);
 
-  private canvas: Canvas | null = null;
+  public canvas: Canvas | null = null;
   private drawingModeEnabled = false;
   private hydrating = false;
   private canvasElement: HTMLCanvasElement | null = null;
 
   // Element registry for tracking all elements on canvas
-  protected elementRegistry: Map<string, BaseElement> = new Map();
+  public elementRegistry: Map<string, BaseElement> = new Map();
 
   // Clipboard for copy/paste
   private clipboard: any[] = [];
@@ -1456,7 +1456,7 @@ export class EditorCanvasService {
    * the canvas, triggering selection handlers and editor visibility updates.
    * Used by element render() / add helpers to give the user immediate feedback.
    */
-  protected selectItemAfterAdded(obj: any): void {
+  public selectItemAfterAdded(obj: any): void {
     if (!this.canvas) {
       return;
     }
@@ -1529,7 +1529,7 @@ export class EditorCanvasService {
    * Generates a unique element id. Exposed via RenderContext so element
    * render() methods can assign ids without depending on internals.
    */
-  protected randomId(): string {
+  public randomId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
