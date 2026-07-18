@@ -1,0 +1,43 @@
+@let s = state();
+@if (s) {
+  <label>
+    <span>Length</span>
+    <input
+      type="number"
+      min="1"
+      [ngModel]="$any(s).length"
+      (ngModelChange)="onLengthChange($event)"
+    />
+  </label>
+
+  <label>
+    <span>Stroke</span>
+    <div class="color-input-row">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          [checked]="!$any(s).stroke"
+          (change)="onStrokeNoneToggle($any($event.target).checked)"
+        />
+        <span>None</span>
+      </label>
+      <input
+        type="color"
+        [ngModel]="$any(s).stroke"
+        (ngModelChange)="onStrokeChange($event)"
+        [disabled]="!$any(s).stroke"
+      />
+    </div>
+  </label>
+
+  <label>
+    <span>Stroke Width</span>
+    <input
+      type="number"
+      min="0"
+      max="20"
+      [ngModel]="$any(s).strokeWidth"
+      (ngModelChange)="onStrokeWidthChange($event)"
+    />
+  </label>
+}
