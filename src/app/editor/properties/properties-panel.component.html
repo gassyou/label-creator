@@ -1,0 +1,30 @@
+<aside class="right-rail">
+  <section class="rail-panel">
+    <h2>标签属性</h2>
+    <app-page-properties />
+  </section>
+
+  <section class="rail-panel">
+    <h2>元素属性</h2>
+    @let sel = doc.selection();
+    @if (!sel) {
+      <p class="muted">Select an object on the canvas to edit its properties.</p>
+    } @else {
+      <div class="property-stack">
+        <app-common-properties />
+        @switch (sel.type) {
+          @case ('text')     { <app-text-properties /> }
+          @case ('barcode')  { <app-barcode-properties /> }
+          @case ('qrcode')   { <app-qrcode-properties /> }
+          @case ('line')     { <app-line-properties /> }
+          @default           { <app-figure-properties /> }
+        }
+      </div>
+    }
+  </section>
+
+  <section class="rail-panel json-panel">
+    <h2>标签数据</h2>
+    <app-json-preview />
+  </section>
+</aside>

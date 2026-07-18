@@ -1,13 +1,329 @@
-/* src/app/editor/properties/properties-panel.component.scss */
+.right-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-left: 1px solid #e5e7eb;
+  background: #fafafa;
+}
 
-/* This file holds the shared selectors used by every property-panel
-   sub-component (.property-stack, .inline-row, .color-input-row,
-   .text-style-row, .checkbox-label, .bg-preview, .muted, .icon-button,
-   etc.). Each sub-component imports this file via its styleUrl.
+.rail-panel {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
 
-   The full rules are copied verbatim from editor-properties-panel.scss
-   in the next step. */
+  &:last-child {
+    border-bottom: none;
+  }
+}
 
-.placeholder {
-  display: none;
+.rail-panel h2 {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #111827;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+label span {
+  font-size: 0.78rem;
+  color: #4b5563;
+}
+
+.inline-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input[type='text'],
+input[type='number'],
+select {
+  width: 100%;
+  padding: 6px 12px;
+  border: 1px solid #d7dde7;
+  border-radius: 12px;
+  background: #fff;
+  color: #111827;
+}
+
+input[type='color'] {
+  width: 100%;
+  height: 42px;
+  padding: 4px;
+  border: 1px solid #d7dde7;
+  border-radius: 12px;
+  background: #fff;
+}
+
+input[type='range'] {
+  width: 100%;
+}
+
+.color-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+
+  input[type='color'] {
+    flex: 1;
+  }
+
+  .checkbox-label {
+    margin-bottom: 0;
+    width: auto;
+    min-width: 60px;
+  }
+}
+
+input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+
+  input {
+    width: 16px;
+    height: 16px;
+  }
+
+  span {
+    font-size: 0.82rem;
+    color: #4b5563;
+  }
+}
+
+button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+button.icon-button {
+  min-width: 38px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  color: #1f2937;
+
+  span[nz-icon] {
+    font-size: 16px;
+  }
+
+  &.active {
+    background: #eff6ff;
+    color: #2563eb;
+    border-color: #bfdbfe;
+  }
+
+  &:hover:not(.active) {
+    background: #e5e7eb;
+  }
+}
+
+button.secondary {
+  background: #f8fafc;
+  color: #1f2937;
+}
+
+button.secondary.active,
+.segmented button.active {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.wide {
+  width: 100%;
+}
+
+.page-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.page-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.page-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #dbe4f0;
+}
+
+.page-card.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  box-shadow: inset 0 0 0 1px #bfdbfe;
+}
+
+.page-card__title {
+  font-weight: 700;
+}
+
+.page-card__meta {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.property-stack {
+  display: grid;
+}
+
+.inline-actions,
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.segmented button {
+  background: #fff;
+  color: #4b5563;
+}
+
+.muted {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.bg-preview {
+  margin-top: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+
+  img {
+    max-width: 60px;
+    max-height: 60px;
+    object-fit: contain;
+    display: block;
+  }
+}
+
+.text-style-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+
+  button.icon-button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #1f2937;
+    cursor: pointer;
+    transition: all 150ms ease;
+
+    span[nz-icon] {
+      font-size: 16px;
+    }
+
+    &:hover:not(.active) {
+      background: #e5e7eb;
+    }
+
+    &.active {
+      background: #eff6ff;
+      color: #2563eb;
+      border-color: #bfdbfe;
+    }
+  }
+}
+
+.text-align-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+
+  .align-label {
+    font-size: 0.75rem;
+    color: #4b5563;
+    min-width: 60px;
+  }
+
+  button.icon-button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #1f2937;
+    cursor: pointer;
+    transition: all 150ms ease;
+
+    span[nz-icon] {
+      font-size: 16px;
+    }
+
+    &:hover:not(.active) {
+      background: #e5e7eb;
+    }
+
+    &.active {
+      background: #eff6ff;
+      color: #2563eb;
+      border-color: #bfdbfe;
+    }
+  }
+}
+
+.json-panel pre {
+  margin: 0;
+  overflow: auto;
+  max-height: 280px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .right-rail {
+    border-left: 0;
+  }
 }
