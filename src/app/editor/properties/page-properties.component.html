@@ -1,0 +1,80 @@
+<!-- src/app/editor/properties/page-properties.component.html -->
+<label>
+  <select
+    title="标签大小"
+    [ngModel]="presetId()"
+    (ngModelChange)="onPresetChange($event)"
+  >
+    <option value="a4-portrait">A4 Portrait (210×297 mm)</option>
+    <option value="a4-landscape">A4 Landscape (297×210 mm)</option>
+    <option value="a5-portrait">A5 Portrait (148×210 mm)</option>
+    <option value="a5-landscape">A5 Landscape (210×148 mm)</option>
+    <option value="letter-portrait">Letter Portrait (216×279 mm)</option>
+    <option value="letter-landscape">Letter Landscape (279×216 mm)</option>
+    <option value="custom">Custom</option>
+  </select>
+</label>
+<div class="size-display inline-row">
+  <label>
+    <span>Width (mm)</span>
+    <input
+      type="number"
+      [ngModel]="mmWidth()"
+      (ngModelChange)="onWidthChange($event)"
+    />
+  </label>
+  <label>
+    <span>Height (mm)</span>
+    <input
+      type="number"
+      [ngModel]="mmHeight()"
+      (ngModelChange)="onHeightChange($event)"
+    />
+  </label>
+</div>
+<label>
+  <span>Background Color</span>
+  <div class="color-input-row">
+    <label class="checkbox-label">
+      <input
+        type="checkbox"
+        [checked]="!page().backgroundColor"
+        (change)="onBackgroundNoneToggle($any($event.target).checked)"
+      />
+      <span>None</span>
+    </label>
+    <input
+      type="color"
+      [ngModel]="page().backgroundColor"
+      (ngModelChange)="onBackgroundColorChange($event)"
+      [disabled]="!page().backgroundColor"
+    />
+  </div>
+</label>
+<label>
+  <span>Background Image</span>
+  <div class="color-input-row">
+    <label class="checkbox-label">
+      <input
+        type="checkbox"
+        [checked]="!page().backgroundImage"
+        (change)="onBackgroundImageToggle($any($event.target).checked)"
+      />
+      <span>None</span>
+    </label>
+    <nz-upload
+      [nzShowUploadList]="false"
+      [nzBeforeUpload]="beforeUpload"
+    >
+      <button nz-button nzType="primary" nzSize="small" type="button">
+        <span nz-icon nzType="upload"></span>
+        Upload
+      </button>
+    </nz-upload>
+  </div>
+  @if (page().backgroundImage) {
+    <div class="bg-preview">
+      <img [src]="page().backgroundImage" alt="Background preview" />
+    </div>
+  }
+</label>
