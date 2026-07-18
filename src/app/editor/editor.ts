@@ -200,7 +200,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         return;
       }
       event.preventDefault();
-      this.removeSelected();
+      void this.canvasService.deleteSelected();
       return;
     }
   }

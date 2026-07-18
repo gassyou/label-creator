@@ -21,6 +21,8 @@ import { AddShapeCommand } from './commands/add-shape.command';
 import { AddQRCodeCommand } from './commands/add-qrcode.command';
 import { AddBarcodeCommand } from './commands/add-barcode.command';
 import { AddImageCommand } from './commands/add-image.command';
+import { DeleteSelectedCommand } from './commands/delete-selected.command';
+import { ClearCanvasCommand } from './commands/clear-canvas.command';
 
 
 @Injectable()
@@ -205,6 +207,14 @@ export class EditorCanvasService {
     return cmd.element!;
   }
 
+  async deleteSelected(): Promise<void> {
+    await this.execute(new DeleteSelectedCommand());
+  }
+
+  async clearCanvas(): Promise<void> {
+    await this.execute(new ClearCanvasCommand());
+  }
+
   // ============================================================
   // Element CRUD Operations
   // ============================================================
@@ -236,6 +246,19 @@ export class EditorCanvasService {
     });
     this.canvas.requestRenderAll();
     this.handleSelection(null);
+  }
+
+  deleteSelectedInternal(): void {
+    this.removeSelected();
+  }
+
+  clearCanvasInternal(): void {
+    if (!this.canvas) return;
+    const objects = this.canvas.getObjects().slice();
+    for (const obj of objects) this.canvas.remove(obj);
+    this.elementRegistry.clear();
+    this.handleSelection(null);
+    this.touchRevision();
   }
 
   cloneSelected(): void {
@@ -333,7 +356,7 @@ export class EditorCanvasService {
     this.canvas.requestRenderAll();
   }
 
-  clearCanvas(backgroundColor: string): void {
+  resetCanvas(backgroundColor: string): void {
     if (!this.canvas) {
       return;
     }
