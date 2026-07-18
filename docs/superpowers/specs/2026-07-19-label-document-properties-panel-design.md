@@ -38,7 +38,7 @@ This avoids confusion: `Label` and `LabelTemplate` remain the persistence vocabu
 ```
 src/app/editor/
   document/
-    label-document.ts                       # LabelDocument + LabelPageSettings types (reuses ElementType/SerializableElement)
+    label-document.ts                       # LabelDocument + LabelPageSettings types (reuses ElementType + LabelElement union)
     label-document.service.ts               # central service: signals + mutations + selectors
     index.ts                                # barrel
 
@@ -74,14 +74,15 @@ src/app/editor/
 **Reuse, don't redefine.** The runtime model uses types that already exist in `models/`:
 
 - The element discriminator is the existing `ElementType` (`models/editor.models.ts:53-61`).
-- A single element's runtime state is the existing `SerializableElement` (`models/element-base.ts:44-57`) — its `[key: string]: unknown` index signature already covers every kind-specific field (`fill`/`stroke`/`text`/`fontFamily`/`barcodeFormat`/`foregroundColor`/etc.). Concrete subtypes (`RectElementData`, `TextElementData`, …) satisfy it structurally.
+- The element storage type is the existing `LabelElement` union (`models/editor.models.ts:112-120`) — it's `RectElement | CircleElement | TriangleElement | LineElement | TextElement | BarcodeElement | QRCodeElement | ImageElement`, each being `XxxElementClass | XxxElementData`. So the map can hold either an instance or a plain data record; the `*Data` branch is what the persistence path actually produces.
 
-We do **not** introduce new `ElementKind` or `ElementState` types. Only one new type is added:
+We do **not** introduce new `ElementKind`, `ElementState`, or any new element type. The `SerializableElement` interface in `models/element-base.ts:44-57` is currently only used as the abstract `toJSON()` return type — no subclass implements it and no consumer references it. We do not bring it into `LabelDocument`; the service stores `LabelElement` directly.
+
+Only one new type is added:
 
 ```ts
 // document/label-document.ts
-import type { ElementType, EditorSelectionState } from '../models/editor.models';
-import type { SerializableElement } from '../models/element-base';
+import type { EditorSelectionState, LabelElement } from '../models/editor.models';
 
 /** Runtime page-level settings. */
 export interface LabelPageSettings {
@@ -94,17 +95,14 @@ export interface LabelPageSettings {
 /** The runtime editing document. Immutable from outside the service. */
 export interface LabelDocument {
   page: LabelPageSettings;
-  elements: ReadonlyMap<string, SerializableElement>;
+  elements: ReadonlyMap<string, LabelElement>;
   selectionId: string | null;
 }
-
-/** Map an element's ElementType to the property-panel switch key. */
-export type ElementKind = ElementType; // semantic alias only; same value set.
 ```
 
-**Why no separate `ElementState`:** `SerializableElement` already satisfies "an element's runtime state": it carries the common fields (`id`, `type`, `x`, `y`, `width`, `height`, `rotation`, `opacity`, …) plus the open `[key: string]: unknown` bag. Each `*ElementData` interface (e.g. `TextElementData` for text-only fields like `fontFamily`) is the per-kind specialization. The service stores `SerializableElement` values; consumers narrow to the specific `*Data` shape via the element `type` discriminator.
+**Why no separate element-type for storage:** `LabelElement` already represents "any element, instance or data." Each `*ElementData` (e.g. `TextElementData` for text-only fields like `fontFamily`) is the per-kind specialization. Consumers narrow via the element's `type` discriminator (`'rect' | 'text' | 'barcode' | …`) — same discriminator `LabelElement`'s members already carry. The service stores `LabelElement` values; panels do `if (sel.type === 'text')` to get text-only fields.
 
-**Why `ElementKind` (alias only):** some panel sub-components want to switch on a kind that matches the panel's URL/selector naming (`text-properties`, `barcode-properties`, …). Aliasing to `ElementType` keeps the same value set and prevents the codebase from drifting.
+**Why we don't reuse `SerializableElement`:** although `SerializableElement` looks like "the runtime element shape," no concrete element class returns it from `toJSON()` and no code reads it. It's an unused contract. Using `LabelElement` keeps the type system honest about what's actually flowing through the editor.
 
 ### `LabelDocumentService`
 
@@ -114,12 +112,12 @@ export type ElementKind = ElementType; // semantic alias only; same value set.
 export class LabelDocumentService {
   // -- state signals --
   readonly page = signal<LabelPageSettings>(DEFAULT_PAGE);
-  readonly elements = signal<ReadonlyMap<string, SerializableElement>>(new Map());
+  readonly elements = signal<ReadonlyMap<string, LabelElement>>(new Map());
   readonly selectionId = signal<string | null>(null);
 
   // -- selectors (computed) --
   /** The currently selected element, or null. */
-  readonly selection = computed<SerializableElement | null>(() => {
+  readonly selection = computed<LabelElement | null>(() => {
     const id = this.selectionId();
     return id ? this.elements().get(id) ?? null : null;
   });
@@ -134,8 +132,8 @@ export class LabelDocumentService {
   setPageSize(widthMm: number, heightMm: number): void;
   setPageBackground(color: string | null, image?: string | null): void;
 
-  addElement(state: SerializableElement): void;
-  updateElement(id: string, patch: Partial<SerializableElement>): void;   // the main write entry
+  addElement(state: LabelElement): void;
+  updateElement(id: string, patch: Partial<LabelElement>): void;   // the main write entry
   removeElement(id: string): void;
   selectElement(id: string | null): void;
 
@@ -148,15 +146,15 @@ export class LabelDocumentService {
    */
   toLabel(): Label;
   /** Hydrate runtime state from a persisted `Label`. The canvas adapter
-   *  parses `canvasJson` and pushes SerializableElement records via `addElement`. */
+   *  parses `canvasJson` and pushes LabelElement records via `addElement`. */
   loadFromLabel(label: Label): void;
 
   // -- internal --
-  private toProperties(s: SerializableElement): EditorSelectionState { /* field mapping */ }
+  private toProperties(s: LabelElement): EditorSelectionState { /* field mapping */ }
 }
 ```
 
-**Note:** `elements` is a `ReadonlyMap` stored in a single signal. We do not split per-element signals (that would explode the API surface). Mutations replace the Map reference with a new Map (cheap; ~handful of elements per label), which still gives consumers O(1) re-render via `effect` + identity check. If perf becomes an issue we can later move to `Map<id, signal<SerializableElement>>`; today's labels are small (< 50 elements typical) so the simple model wins.
+**Note:** `elements` is a `ReadonlyMap` stored in a single signal. We do not split per-element signals (that would explode the API surface). Mutations replace the Map reference with a new Map (cheap; ~handful of elements per label), which still gives consumers O(1) re-render via `effect` + identity check. If perf becomes an issue we can later move to `Map<id, signal<LabelElement>>`; today's labels are small (< 50 elements typical) so the simple model wins.
 
 ## Component Architecture
 
