@@ -48,7 +48,7 @@ src/app/editor/
     properties-panel.component.scss         # (move from editor-properties-panel.scss; shared selectors)
     page-properties.component.ts/.html      # pageSize, mm W/H, bg color, bg image upload
     common-properties.component.ts/.html    # id + opacity (all types)
-    shape-properties.component.ts/.html     # rect/circle/triangle: fill + stroke + size + (common)
+    figure-properties.component.ts/.html     # rect/circle/triangle/image: fill + stroke + size + (common)
     line-properties.component.ts/.html      # line: length + stroke + strokeWidth + (common)
     text-properties.component.ts/.html      # text: color/fontFamily/fontSize/style/align + (common)
     barcode-properties.component.ts/.html   # barcode: format/value/showText + (common)
@@ -97,9 +97,9 @@ export interface ElementState {
   text?: string;
   fontFamily?: string;
   fontSize?: number;
-  fontWeight?: 'normal' | 'bold';
-  fontStyle?: 'normal' | 'italic';
-  textDecoration?: string;
+  fontWeight?: string;      // 'normal' | 'bold' (matches existing EditorSelectionState)
+  fontStyle?: string;       // 'normal' | 'italic'
+  textDecoration?: string;  // 'underline' | '' | 'line-through' (multi-value via space join)
   textAlign?: 'left' | 'center' | 'right';
   color?: string;
 
@@ -163,8 +163,16 @@ export class LabelDocumentService {
   selectElement(id: string | null): void;
 
   // -- serialization --
-  toLabel(): Label;                  // runtime → persistence
-  loadFromLabel(label: Label): void; // persistence → runtime
+  /**
+   * Serialize current runtime state to the persistence `Label` shape.
+   * `page` fields map directly. `elements` is serialized to `canvasJson`
+   * by delegating to EditorCanvasService (Fabric's `toJSON()`); this service
+   * does not own Fabric, so it asks the adapter to render the JSON.
+   */
+  toLabel(): Label;
+  /** Hydrate runtime state from a persisted `Label`. The canvas adapter
+   *  parses `canvasJson` and pushes ElementState records via `addElement`. */
+  loadFromLabel(label: Label): void;
 
   // -- internal --
   private toProperties(s: ElementState): EditorSelectionState { /* field mapping */ }
@@ -198,7 +206,7 @@ The shell owns no editing state. It only composes sub-components and provides th
         @case ('barcode')  { <app-barcode-properties /> }
         @case ('qrcode')   { <app-qrcode-properties /> }
         @case ('line')     { <app-line-properties /> }
-        @default           { <app-shape-properties /> }
+        @default           { <app-figure-properties /> }
       }
     }
   </section>
@@ -210,7 +218,7 @@ The shell owns no editing state. It only composes sub-components and provides th
 </aside>
 ```
 
-The `'image'` case currently routes to `<app-shape-properties />` because images share the figure property shape (size + opacity). If image-specific properties are needed later (e.g. image-fit mode), split into `<app-image-properties />`.
+The `'image'` case is routed to `<app-figure-properties />` because images share the figure property shape (size + opacity + fill/stroke). If image-specific properties are needed later (e.g. image-fit mode), split into `<app-image-properties />`.
 
 ### Sub-component pattern — `TextPropertiesComponent`
 
@@ -340,19 +348,21 @@ Fabric 'object:modified' event
    │
    ▼
 EditorCanvasService.handleObjectModified(obj)
-   │ (writes via untracked)
+   │ (writes via untracked, with isApplyingFromDoc = true)
    ▼
 LabelDocumentService.updateElement(obj.id, { x, y, width, height, ... })
-   │ (signal mutation)
-   ├──► elements signal updates
-   │      └──► effect would re-sync… but element equals prior value → Fabric.set called with same values → no-op
+   │ (signal mutation: replaces elements Map)
+   ├──► elements signal updates (new Map reference)
+   │      └──► effect fires syncFabricElements()
+   │             → guarded by isApplyingFromDoc → skip
+   │             → set isApplyingFromDoc = false when done
    │
    └──► selectionProperties computed updates
-          └──► ShapePropertiesComponent.state updates
+          └──► FigurePropertiesComponent.state updates
                  └──► <input type="number"> re-renders with new W/H
 ```
 
-We must guard against cycle #2: when fabric is updated by `syncFabricElements`, the event `object:modified` should NOT fire back. Existing code already handles this via an internal `isApplyingFromDoc` flag — preserve that pattern.
+**Cycle guard:** the `isApplyingFromDoc` flag is set `true` only on the *fabric → document* write path; `syncFabricElements` reads the flag and returns early when `true`, then resets it in a `finally`. This breaks the loop without `untracked`-dependency gymnastics.
 
 ## Shared Styles
 
@@ -390,7 +400,7 @@ Verification is manual via the existing demo:
 | `EditorSelectionState` consumers outside this folder break | Keep `editor.models.ts` `EditorSelectionState` type unchanged; `selectionProperties` computed still produces it. (Audit pass before implementation.) |
 | Performance — every property edit re-renders all panels | Each sub-panel reads only the fields it needs via narrow `computed`. Angular's signal change detection skips unchanged components. |
 | Loss of the dead `verticalAlignChanged` wire (currently in `editor-properties-panel.ts:57` and `editor.html:78` but no UI emits it) | Remove during the refactor. Add back later if needed. |
-| Image panel UX (no specific properties today) | Routes to `<app-shape-properties />`. Add `<app-image-properties />` later if image-specific fields are added. |
+| Image panel UX (no specific properties today) | Routes to `<app-figure-properties />` (shared with rect/circle/triangle). Add `<app-image-properties />` later if image-specific fields are added. |
 | SCSS duplication across sub-components | Each sub-component's `styleUrl` imports the shared `properties-panel.component.scss` file; Angular supports this. |
 
 ## Open Questions
@@ -398,7 +408,7 @@ Verification is manual via the existing demo:
 None at design-approval time. Resolved during brainstorming:
 
 1. Sync mechanism → Angular signals + effect (no RxJS).
-2. Granularity → 6 type-specific panels + 1 page + 1 common + 1 json preview (medium).
+2. Granularity → 5 type-specific panels (`figure`/`line`/`text`/`barcode`/`qrcode`) + 1 page + 1 common + 1 json preview (medium).
 3. Sync direction → bidirectional, via central `LabelDocumentService`.
 4. Central object naming → `LabelDocument` (vs. existing persistence `Label`).
 5. Central object location → new `document/label-document.service.ts` with `signal` tree.
