@@ -62,16 +62,10 @@ export class EditorCanvasService {
   private drawingModeEnabled = false;
   private hydrating = false;
 
-  // Element registry for tracking all elements on canvas
-  // Delegates to the renderer; kept as a public field for legacy callers
-  // (Phase 6 deletes this).
-  public elementRegistry: Map<string, BaseElement> = new Map();
-
   constructor() {
-    // Sync local elementRegistry view with the renderer-owned registry.
-    // Phase 6 deletes elementRegistry entirely; until then this keeps the
-    // legacy API (read/write elementRegistry) intact.
-    this.elementRegistry = this.renderer.getElementRegistry() as Map<string, BaseElement>;
+    // Doc is the single source of truth for elements. Reads go through
+    // `this.doc.elements()`; writes go through `doc.addElement /
+    // updateElement / removeElement`.
   }
 
   // Clipboard for copy/paste
@@ -124,7 +118,7 @@ export class EditorCanvasService {
 
   destroy(): void {
     this.renderer.dispose();
-    this.elementRegistry.clear();
+    this.doc.setElements(new Map());
     this.selection.handleFabricSelection(null);
   }
 
@@ -356,11 +350,13 @@ export class EditorCanvasService {
 
   /**
    * Returns the element registry map for read/write access by element classes.
-   * The returned type is narrowed to BaseElement so callers cannot assume
-   * concrete element shapes.
+   * Phase 6: thin shim that exposes `doc.elements()` (wrapped in a mutable
+   * `Map` for API compatibility — writes go through `doc.addElement /
+   * updateElement / removeElement`). Retained because external callers
+   * (tests, etc.) may still consume this shape.
    */
   getElementRegistry(): Map<string, BaseElement> {
-    return this.elementRegistry;
+    return new Map(this.doc.elements()) as Map<string, BaseElement>;
   }
 
   // ============================================================
@@ -435,9 +431,7 @@ export class EditorCanvasService {
     this.canvas.discardActiveObject();
     activeObjects.forEach((object) => {
       const id = this.getObjectId(object);
-      this.elementRegistry.delete(id);
-      // Mirror removal into the central document so doc consumers stay in sync.
-      if (id && this.doc.elements().has(id)) {
+      if (id) {
         this.doc.removeElement(id);
       }
       this.canvas?.remove(object);
@@ -456,12 +450,9 @@ export class EditorCanvasService {
     for (const obj of objects) this.canvas.remove(obj);
     // Mirror the wipe into the central document. LabelDocumentService has no
     // batch-clear method, so loop with the existing removeElement API.
-    for (const id of this.elementRegistry.keys()) {
-      if (this.doc.elements().has(id)) {
-        this.doc.removeElement(id);
-      }
+    for (const id of Array.from(this.doc.elements().keys())) {
+      this.doc.removeElement(id);
     }
-    this.elementRegistry.clear();
     this.handleSelection(null);
     this.touchRevision();
   }
@@ -570,7 +561,7 @@ export class EditorCanvasService {
     this.canvas.clear();
     this.canvas.backgroundColor = backgroundColor;
     this.canvas.requestRenderAll();
-    this.elementRegistry.clear();
+    this.doc.setElements(new Map());
     this.handleSelection(null);
   }
 
@@ -659,7 +650,7 @@ export class EditorCanvasService {
     this.normalizeTextStylesFontFamily();
 
     // 对 image 元素（barcode/qrcode 等）不做归一化：
-    // setSelectionWidth/Height 已经把 obj.width/height 锁定为 elementRegistry
+    // setSelectionWidth/Height 已经把 obj.width/height 锁定为 doc
     // 里的业务字段（设计尺寸），scaleX/scaleY 反映用户的视觉调整。
     // 如果这里归一化为 obj.width = 视觉宽度，会丢失业务字段，
     // 让 PDF 路径上的比例偏离用户设计。
@@ -710,8 +701,8 @@ export class EditorCanvasService {
    */
   serializeToTemplate(): string {
     const elements: BaseElement[] = [];
-    this.elementRegistry.forEach((element) => {
-      elements.push(element);
+    this.doc.elements().forEach((element) => {
+      elements.push(element as unknown as BaseElement);
     });
 
     const template = {
@@ -736,7 +727,7 @@ export class EditorCanvasService {
 
     this.hydrating = true;
     this.canvas.clear();
-    this.elementRegistry.clear();
+    this.doc.setElements(new Map());
     this.canvas.setDimensions({
       width: widthPx,
       height: heightPx,
@@ -783,9 +774,12 @@ export class EditorCanvasService {
           });
         }
 
-        // Create basic element model for registry
+        // Create basic element model and backfill the central document
+        // (doc is the single source of truth since Phase 6).
         const element = ElementFactory.fromFabricObject(object, id);
-        this.elementRegistry.set(id, element);
+        if (element) {
+          this.doc.addElement(element as unknown as LabelElement);
+        }
       });
     }
 
@@ -959,7 +953,7 @@ export class EditorCanvasService {
 
   private getObjectElement(object: any): BaseElement | undefined {
     const id = this.getObjectId(object);
-    return this.elementRegistry.get(id);
+    return this.doc.elements().get(id) as BaseElement | undefined;
   }
 
   updateSelectionId(id: string): void {
@@ -986,7 +980,7 @@ export class EditorCanvasService {
     if ((object as any).type === 'image') {
       // 改 W：当前 obj 视觉宽设为输入值，视觉高保持不变（obj.height × obj.scaleY）。
       // 然后把视觉尺寸整体作为新的 designW/designH，scaleX/Y=1。
-      // 这样 elementRegistry.width/height 永远是"用户最新设计尺寸"，
+      // 这样 doc.width/height 永远是"用户最新设计尺寸"，
       // PDF 路径用 designW/designH（也就是 obj.width/obj.height）比例渲染，不被拉伸。
       const visualHeight = (object.height || 1) * (object.scaleY || 1);
       object.set({
@@ -1024,7 +1018,7 @@ export class EditorCanvasService {
   }
 
   /**
-   * 把 obj 当前的视觉尺寸同步到 elementRegistry（用户设计字段）。
+   * 把 obj 当前的视觉尺寸同步到 doc 元素（用户设计字段）。
    * 同步 width/height + x/y，让 PDF 路径按最新设计渲染。
    */
   private updateElementSize(object: any, designW: number, designH: number): void {
@@ -1436,11 +1430,11 @@ export class EditorCanvasService {
   // ============================================================
 
   getElementById(id: string): BaseElement | undefined {
-    return this.elementRegistry.get(id);
+    return this.doc.elements().get(id) as BaseElement | undefined;
   }
 
   getAllElements(): BaseElement[] {
-    return Array.from(this.elementRegistry.values());
+    return Array.from(this.doc.elements().values()) as BaseElement[];
   }
 
   // ============================================================

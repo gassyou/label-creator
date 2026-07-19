@@ -25,7 +25,6 @@ export class AddTextCommand implements EditorCommand {
     });
 
     const obj = await this.element.render(ctx.getRenderContext());
-    ctx.elementRegistry.set(this.element.id, this.element);
     ctx.doc.addElement(this.element as LabelElement);
     ctx.canvas.add(obj);
     ctx.selectItemAfterAdded(obj);

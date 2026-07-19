@@ -38,10 +38,6 @@ export class FabricRenderer {
 
   readonly syncDirection = signal<SyncDirection>('idle');
 
-  // Element registry for tracking all elements on canvas.
-  // NOTE: Phase 6 deletes this in favour of `doc.elements()`.
-  public elementRegistry: Map<string, any> = new Map();
-
   constructor() {
     // document → fabric: re-render elements when the document changes.
     // Suppressed while a fabric → doc write is in flight (echo prevention).
@@ -89,7 +85,6 @@ export class FabricRenderer {
     this.canvas?.dispose();
     this.canvas = null;
     this.canvasElement = null;
-    this.elementRegistry.clear();
   }
 
   getCanvas(): Canvas | null {
@@ -113,15 +108,6 @@ export class FabricRenderer {
       extendWithCustomProperties: (obj, props) => this.extendWithCustomProperties(obj, props),
       randomId: () => this.randomId(),
     };
-  }
-
-  /**
-   * Returns the element registry map for read/write access by element classes.
-   * The returned type is narrowed to a broad `BaseElement`-like shape so
-   * callers cannot assume concrete element shapes.
-   */
-  getElementRegistry(): Map<string, any> {
-    return this.elementRegistry;
   }
 
   /**
@@ -198,7 +184,7 @@ export class FabricRenderer {
       // not in the document: leave them alone (deletion still goes through
       // DeleteSelectedCommand).
       for (const [id, data] of elements.entries()) {
-        const obj = this.elementRegistry.get(id) ? onCanvas.get(id) : null;
+        const obj = onCanvas.get(id);
         if (!obj) continue;
 
         const anyData = data as unknown as Record<string, unknown>;

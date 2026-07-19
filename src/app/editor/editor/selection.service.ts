@@ -15,7 +15,8 @@
  *  - Cycle guard (`syncDirection`): that's `FabricRenderer` — read here as
  *    a flag to skip echoes of doc-driven updates.
  *  - Backfill of legacy elements into `doc.elements()`: still required because
- *    `elementRegistry` survives until Phase 6.
+ *    templates hydrated from older save formats may carry Fabric objects that
+ *    have no doc entry yet.
  *
  * Canvas event listener wiring (`canvas.on('selection:*', ...)` etc.) stays
  * on `EditorCanvasService.initialize()` — that wiring forwards the active
@@ -97,7 +98,7 @@ export class SelectionService {
     }
 
     const id = this.getObjectId(object);
-    const element = (this.elementRegistry().get(id) ?? null) as BaseElement | null;
+    const element = (this.doc.elements().get(id) ?? null) as BaseElement | null;
     this.selected.set(element);
 
     // Backfill: hydrate doc.elements if the element pre-dates the
@@ -159,13 +160,5 @@ export class SelectionService {
 
   private getObjectId(object: any): string {
     return this.renderer.getObjectId(object);
-  }
-
-  /**
-   * Read-only access to the legacy element registry. The registry lives on
-   * the renderer (Phase 6 will replace this with `doc.elements()`).
-   */
-  private elementRegistry(): Map<string, any> {
-    return this.renderer.getElementRegistry();
   }
 }
