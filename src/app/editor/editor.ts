@@ -36,6 +36,7 @@ import { webFontLoader } from '../print/generators/web-font-loader';
 import { LabelDocumentService } from './document';
 import { OperationsService } from './editor/operations.service';
 import { LabelConverter } from './persistence/label-converter';
+import { UndoRedoService } from './editor/undo-redo.service';
 
 @Component({
   selector: 'app-editor',
@@ -46,7 +47,7 @@ import { LabelConverter } from './persistence/label-converter';
     EditorToolStripComponent,
     PrintSettingDialogComponent,
   ],
-  providers: [EditorCanvasService, LabelDocumentService, OperationsService],
+  providers: [EditorCanvasService, LabelDocumentService, OperationsService, UndoRedoService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
   styleUrl: './editor.scss',

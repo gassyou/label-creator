@@ -10,7 +10,7 @@ import {
   EditorSelectionState,
 } from './models/editor.models';
 import { Label, PX_PER_MM, millimetersToPixels } from './models/label.models';
-import { LabelDocumentService, type LabelDocumentSnapshot } from './document';
+import { LabelDocumentService } from './document';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { ElementFactory } from './models/element-factory';
 import { EditorCommand } from './commands/editor-command';
@@ -23,28 +23,17 @@ import { DeleteSelectedCommand } from './commands/delete-selected.command';
 import { ClearCanvasCommand } from './commands/clear-canvas.command';
 import { FabricRenderer } from './render/fabric-renderer';
 import { SelectionService } from './editor/selection.service';
-
-/**
- * A single undo/redo snapshot. Bundles the Fabric canvas JSON with an
- * atomic {@link LabelDocumentSnapshot} so undo/redo can restore both
- * layers coherently. Replaces the old `string` (canvas-JSON-only)
- * snapshot type that caused the historical undo bug.
- */
-interface EditorSnapshot {
-  canvasJson: string;
-  docSnapshot: LabelDocumentSnapshot;
-}
+import { UndoRedoService } from './editor/undo-redo.service';
 
 @Injectable()
 export class EditorCanvasService {
   readonly revision = signal(0);
   readonly zoom = signal(1);
-  readonly canUndoSignal = signal(false);
-  readonly canRedoSignal = signal(false);
 
   readonly doc = inject(LabelDocumentService);
   private readonly renderer = inject(FabricRenderer);
   private readonly selection = inject(SelectionService);
+  private readonly undoRedo = inject(UndoRedoService);
 
   /** Legacy signals — proxies to the moved SelectionService. Kept as
    * readonly fields so external callers (`selected()`, etc.) continue to
@@ -53,6 +42,14 @@ export class EditorCanvasService {
   readonly selected = this.selection.selected;
   readonly textEditorVisible = this.selection.textEditorVisible;
   readonly figureEditorVisible = this.selection.figureEditorVisible;
+
+  /**
+   * Undo/redo state signals — proxied through to {@link UndoRedoService}.
+   * Kept as readonly fields on the facade so existing topbar templates
+   * (`canUndoSignal()`, `canRedoSignal()`) continue to work unchanged.
+   */
+  readonly canUndoSignal = this.undoRedo.canUndo;
+  readonly canRedoSignal = this.undoRedo.canRedo;
 
   /** Backwards-compatible accessor — delegates to the renderer. */
   get canvas(): Canvas | null {
@@ -66,23 +63,15 @@ export class EditorCanvasService {
     // Doc is the single source of truth for elements. Reads go through
     // `this.doc.elements()`; writes go through `doc.addElement /
     // updateElement / removeElement`.
+
+    // Wire UndoRedoService with a back-reference factory. This breaks the
+    // circular DI: UndoRedoService doesn't `inject()` EditorCanvasService;
+    // instead the facade exposes `() => this` lazily when commands need it.
+    this.undoRedo.setCanvasServiceFactory(() => this);
   }
 
   // Clipboard for copy/paste
   private clipboard: any[] = [];
-
-  // Undo/Redo stacks
-  //
-  // Each stack entry is an `EditorSnapshot` containing both the Fabric canvas
-  // JSON and an atomic {@link LabelDocumentSnapshot}. The doc half is the
-  // fix for the historical undo bug: previously the snapshot only stored
-  // `canvas.toJSON()`, so after undo/redo `doc.elements` could diverge from
-  // the canvas (Fabric regenerated object ids; doc kept the post-state ids).
-  // See Phase 2 of the four-layer architecture plan for the design.
-  private undoStack: EditorSnapshot[] = [];
-  private redoStack: EditorSnapshot[] = [];
-  private maxUndoLevels = 50;
-  private undoInFlight = false;
 
   initialize(
     element: HTMLCanvasElement,
@@ -114,9 +103,15 @@ export class EditorCanvasService {
     );
     this.applyInteractionMode();
     canvas.requestRenderAll();
+
+    // Hand the canvas instance to UndoRedoService so it can take snapshots
+    // and apply them. Done after `renderer.initialize` so the canvas is live.
+    this.undoRedo.setCanvas(canvas);
   }
 
   destroy(): void {
+    this.undoRedo.reset();
+    this.undoRedo.setCanvas(null);
     this.renderer.dispose();
     this.doc.setElements(new Map());
     this.selection.handleFabricSelection(null);
@@ -127,193 +122,50 @@ export class EditorCanvasService {
     this.applyInteractionMode();
   }
 
+  /**
+   * Command wrapper. Delegates the snapshot-stack bookkeeping to
+   * {@link UndoRedoService}; the facade keeps this method (and its
+   * Promise<void> shape) so existing callers in commands and in editor.ts
+   * continue to compile unchanged.
+   */
   execute(command: EditorCommand): Promise<void> {
-    this.pushUndoSnapshot();
-    this.redoStack.length = 0;
-    this.syncUndoSignals();
-    return Promise.resolve()
-      .then(() => command.execute(this))
-      .then(
-        () => this.touchRevision(),
-        (err) => {
-          this.undoStack.pop();
-          this.syncUndoSignals();
-          throw err;
-        },
-      );
+    return this.undoRedo.execute(command).then(() => this.touchRevision());
   }
 
+  /**
+   * Backwards-compatible undo entry point. Delegates to
+   * {@link UndoRedoService.undo} and bridges the legacy `hydrating` flag
+   * (selection/effect signals suppressed during snapshot restore).
+   */
   undo(): void {
-    if (this.undoInFlight) return;
-    if (this.undoStack.length === 0 || !this.canvas) return;
-    const current = this.takeSnapshot();
-    const target = this.undoStack.pop()!;
-    this.undoInFlight = true;
+    if (!this.canUndo()) return;
     this.hydrating = true;
-    this.applyEditorSnapshot(target).finally(() => {
+    this.undoRedo.undo().finally(() => {
       this.hydrating = false;
-      this.undoInFlight = false;
       this.applyInteractionMode();
-      this.canvas?.requestRenderAll();
-      this.redoStack.push(current);
-      this.syncUndoSignals();
     });
   }
 
+  /**
+   * Backwards-compatible redo entry point. Mirrors `undo()`.
+   */
   redo(): void {
-    if (this.undoInFlight) return;
-    if (this.redoStack.length === 0 || !this.canvas) return;
-    const current = this.takeSnapshot();
-    const target = this.redoStack.pop()!;
-    this.undoInFlight = true;
+    if (!this.canRedo()) return;
     this.hydrating = true;
-    this.applyEditorSnapshot(target).finally(() => {
+    this.undoRedo.redo().finally(() => {
       this.hydrating = false;
-      this.undoInFlight = false;
       this.applyInteractionMode();
-      this.canvas?.requestRenderAll();
-      this.undoStack.push(current);
-      this.syncUndoSignals();
     });
   }
 
+  /** Backwards-compatible proxy to {@link UndoRedoService.hasUndo}. */
   canUndo(): boolean {
-    return this.undoStack.length > 0;
+    return this.undoRedo.hasUndo();
   }
+
+  /** Backwards-compatible proxy to {@link UndoRedoService.hasRedo}. */
   canRedo(): boolean {
-    return this.redoStack.length > 0;
-  }
-
-  /**
-   * Builds a 4-field {@link EditorSnapshot} from the live canvas + doc.
-   * Called from `pushUndoSnapshot` (before each command) and from
-   * `undo`/`redo` (to capture the current pre-swap state so redo/undo
-   * remain reversible).
-   */
-  private takeSnapshot(): EditorSnapshot {
-    const canvasJson = this.canvas ? JSON.stringify(this.canvas.toJSON()) : '';
-    return {
-      canvasJson,
-      docSnapshot: this.doc.snapshot(),
-    };
-  }
-
-  private pushUndoSnapshot(): void {
-    if (!this.canvas) return;
-    this.undoStack.push(this.takeSnapshot());
-    if (this.undoStack.length > this.maxUndoLevels) this.undoStack.shift();
-    this.syncUndoSignals();
-  }
-
-  /**
-   * Applies an {@link EditorSnapshot} to the canvas + doc in the order that
-   * keeps the cycle guard intact:
-   *
-   *   1. Restore the doc FIRST (atomic 3-signal batch via `doc.restore()`).
-   *      The Fabric effect sees the new element map and would normally
-   *      re-apply it to the canvas — but...
-   *   2. Flip `syncDirection` to `doc-to-fabric` BEFORE `loadFromJSON` so
-   *      that all `object:added` events fired during the load are swallowed
-   *      by the cycle guard (none of them write back to the doc).
-   *   3. `loadFromJSON` runs the full Fabric rebuild (which emits
-   *      `object:added` for every reconstructed object — all suppressed).
-   *   4. Reset `syncDirection` to `idle`. A defensive
-   *      `reconcileDocFromCanvas()` runs immediately after; in normal
-   *      operation it is a no-op because our `extend`/`extendWithCustomProperties`
-   *      chain keeps object ids stable across `loadFromJSON`.
-   *
-   * Returns the Promise from `loadFromJSON`; the caller wraps it in a
-   * `finally` to ensure `undoInFlight`/`hydrating`/signals are always
-   * restored even if Fabric throws.
-   */
-  private applyEditorSnapshot(target: EditorSnapshot): Promise<void> {
-    if (!this.canvas) return Promise.resolve();
-    // 1. Restore the doc first. This sets page/elements/selectionId
-    //    atomically; downstream effects see the new doc state on their
-    //    next microtask (after the syncDirection flip below).
-    this.doc.restore(target.docSnapshot);
-
-    // 2+3. Span `loadFromJSON` with the cycle guard so `object:added`
-    // events from Fabric's object reconstruction don't write back to the
-    // doc (the historical undo bug).
-    this.renderer.syncDirection.set('doc-to-fabric');
-    try {
-      return this.canvas.loadFromJSON(target.canvasJson).then(() => {
-        // 4. Reset guard before any user-observable side effects.
-        this.renderer.syncDirection.set('idle');
-        this.canvas?.discardActiveObject();
-        // Defensive: only fires if Fabric regenerated ids despite our
-        // `extend` chain (it shouldn't — this is the last-resort branch).
-        this.reconcileDocFromCanvas();
-        this.touchRevision();
-      });
-    } catch (err) {
-      // Safety net: ensure guard is reset even if loadFromJSON throws.
-      this.renderer.syncDirection.set('idle');
-      throw err;
-    }
-  }
-
-  /**
-   * Last-resort reconciliation between `doc.elements` and the canvas's
-   * current object ids. Runs after every undo/redo to guarantee that any
-   * edge case where Fabric regenerated ids is caught before the user sees
-   * a stale property panel.
-   *
-   * In normal operation this is a no-op: `extend`/`extendWithCustomProperties`
-   * preserve ids across `loadFromJSON`, so canvas ids match doc ids. If a
-   * future refactor breaks that chain, this method makes the divergence
-   * non-fatal by removing doc-only ids and synthesizing elements for
-   * canvas-only ids (via {@link ElementFactory.fromFabricObject}).
-   */
-  private reconcileDocFromCanvas(): void {
-    if (!this.canvas) return;
-
-    const canvasIds = new Set<string>();
-    let multiSelectMarkerSeen = false;
-    this.canvas.forEachObject((obj) => {
-      const id = this.getObjectId(obj);
-      if (!id) return;
-      if (id === 'multi-select-marker') {
-        multiSelectMarkerSeen = true;
-        return;
-      }
-      canvasIds.add(id);
-    });
-
-    const docIds = new Set(this.doc.elements().keys());
-
-    // Drop doc-only entries (canvas restored but doc didn't — should not
-    // happen because we restored doc first, but defends against race).
-    for (const id of docIds) {
-      if (!canvasIds.has(id)) {
-        this.doc.removeElement(id);
-      }
-    }
-
-    // Add canvas-only entries (Fabric generated something the doc doesn't
-    // know about — last-resort materialization).
-    if (canvasIds.size > 0) {
-      const canvasObjects = this.canvas.getObjects();
-      for (const id of canvasIds) {
-        if (docIds.has(id)) continue;
-        const obj = canvasObjects.find((o) => this.getObjectId(o) === id);
-        if (obj) {
-          const element = ElementFactory.fromFabricObject(obj, id);
-          if (element) {
-            this.doc.addElement(element as unknown as LabelElement);
-          }
-        }
-      }
-    }
-
-    // Suppress unused-variable lint without changing semantics.
-    void multiSelectMarkerSeen;
-  }
-
-  private syncUndoSignals(): void {
-    this.canUndoSignal.set(this.undoStack.length > 0);
-    this.canRedoSignal.set(this.redoStack.length > 0);
+    return this.undoRedo.hasRedo();
   }
 
   getDrawingModeEnabled(): boolean {
@@ -522,15 +374,10 @@ export class EditorCanvasService {
       return;
     }
 
-    // Use the same 4-field snapshot shape as the rest of the stack so undo
-    // can restore the doc atomically even from a paste/clipboard op.
-    this.undoStack.push(this.takeSnapshot());
-
-    if (this.undoStack.length > this.maxUndoLevels) {
-      this.undoStack.shift();
-    }
-
-    this.redoStack = [];
+    // Delegate the synchronous pre-paste snapshot push to UndoRedoService.
+    // The service uses the same atomic (canvas + doc) snapshot shape as the
+    // rest of the stack, so paste/clipboard ops remain undoable.
+    this.undoRedo.pushSnapshotSync();
   }
 
   bringSelectionToFront(): void {
