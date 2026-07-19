@@ -93,8 +93,22 @@ export async function applyLabelToCanvas(
         obj.set('text', next.text ?? '');
       }
     } else if (type === 'image') {
+      // FabricImage 的设计尺寸：obj.width/obj.height（不含 scaleX/Y）= 用户在编辑器里设的"业务字段"，
+      // scaleX/Y 是视觉缩放。PDF 渲染时 SVG 用 <image width="naturalWidth">，外层 <g transform="scale(scaleX)">，
+      // 视觉 = natural × scaleX。
+      //
+      // 所以 setSrc 之前要保存设计宽高，setSrc 会触发 setElement → _setWidthHeight() 把
+      // obj.width/obj.height 重置为新图片的 naturalWidth/naturalHeight，导致：
+      //   1) 后续 SVG 输出 <image width="natural"> + <g scale(1)> = natural（不是用户设计的 85px）
+      //   2) collectSvgSnapshots 里 obj.width * obj.scaleX 算出 natural 而不是设计值
+      //
+      // setSrc 之后要把设计宽高还原（scaleX/Y setSrc 不动，无需恢复）。
       if (next.src && (!prev || next.src !== prev.src)) {
+        const designWidth = obj.width;
+        const designHeight = obj.height;
         await obj.setSrc(next.src);
+        // 还原用户设计的业务宽高，保证 SVG 路径与设计一致
+        obj.set({ width: designWidth, height: designHeight });
       }
       // 同步位置与缩放。Fabric 自身会处理 scaleX/Y 与图片自然尺寸的合成，
       // 这里不要把 scaleX 强制设回 1，否则会丢失用户在编辑器里调整过的大小。
@@ -104,6 +118,10 @@ export async function applyLabelToCanvas(
 
   cache.current = scaledObjects;
 }
+
+/**
+ * 按标签物理尺寸缩放对象的位置与大小
+ */
 
 /**
  * 按标签物理尺寸缩放对象的位置与大小

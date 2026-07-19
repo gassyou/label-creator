@@ -101,6 +101,14 @@ export function getPaperSize(
 
 /**
  * 毫米转换为像素 (96 DPI / 25.4mm)
+ *
+ * 设计画布统一用 px 单位，物理尺寸用 mm。
+ * 96 DPI 是显示器/打印机的标准 DPI。
+ *
+ * 例：210 mm 标签 → 210 × 96 / 25.4 ≈ 793 px 画布。
+ * 这与 jsPDF 在 unit='px' 下的 1:1 像素渲染一致，
+ * 所以设计阶段的画布 px 数可以 1:1 直接写到 PDF 里，
+ * jsPDF.format: [mmWidth, mmHeight] 控制物理输出尺寸。
  */
 export const PX_PER_MM = 96 / 25.4;
 

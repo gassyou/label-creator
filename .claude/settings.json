@@ -40,7 +40,19 @@
       "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
       "Bash(node -e \"const p=require\\('svg2pdf.js/package.json'\\);console.log\\('type:',p.type,'module:',p.module\\)\")",
       "Bash(node -e \"const fs=require\\('fs'\\);const g=require\\('glob'\\);const files=g.sync\\('src/**/*.ts'\\);for\\(const f of files\\){const t=fs.readFileSync\\(f,'utf8'\\);if\\(/qrcode|elementType.*qr/i.test\\(t\\)\\){console.log\\('---',f\\);const lines=t.split\\('\\\\n'\\);lines.forEach\\(\\(l,i\\)=>{if\\(/qrcode|elementType|setSrc|src:|scaleX|scaleY|width:|height:|left:|top:|clipPath|globalCompositeOperation/i.test\\(l\\)\\)console.log\\(\\(i+1\\)+':',l\\)}}}\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(set)",
+      "Bash(xxd /Users/rococo/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/sdd-workspace)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(git -C /Users/rococo/Documents/02Project/hidan/src/label-creator log --oneline -3)",
+      "Bash(git -C /Users/rococo/Documents/02Project/hidan/src/label-creator show --stat 0d45c5f)",
+      "Bash(bash /Users/rococo/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package ea22c9d 0d45c5f)",
+      "Bash(bash /Users/rococo/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief /Users/rococo/Documents/02Project/hidan/src/label-creator/docs/superpowers/plans/2026-07-18-editor-command-pattern.md 2)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(git -C /Users/rococo/Documents/02Project/hidan/src/label-creator show --stat 7500019)",
+      "Bash(bash /Users/rococo/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package 0d45c5f 7500019)",
+      "Bash(bash /Users/rococo/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief /Users/rococo/Documents/02Project/hidan/src/label-creator/docs/superpowers/plans/2026-07-18-editor-command-pattern.md 3)",
+      "Bash(echo \"EXIT=$?\")"
     ],
     "additionalDirectories": [
       "/Users/rococo/Desktop/label-print/angular-editor-fabric-js-ng21/src/app/editor"

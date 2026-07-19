@@ -98,7 +98,9 @@ export class LabelDataBindingService {
 
   /**
    * 绑定图片对象（barcode / qrcode）
-   * 根据元素的宽高（mm）生成对应尺寸的 SVG/条形码
+   * 按 FabricImage 框的视觉尺寸（px = width × scaleX, height × scaleY）
+   * 生成对应尺寸的 SVG/PNG，保证生成的图比例 = 框比例，
+   * 填进 PDF 时不被拉伸。
    */
   private async bindImageObjectAsync(obj: any, data: BindingData, unbound: string[]): Promise<any> {
     const elementType = obj.elementType;
@@ -109,22 +111,25 @@ export class LabelDataBindingService {
     const bindingValue = obj.bindingValue || '';
     const resolvedValue = this.resolveBindingValue(bindingValue, data, unbound);
 
-    // Canvas JSON 中的 width/height 是像素值，不需要转换
-    // 直接使用像素值来生成对应大小的图片
-    const widthPx = obj.width || 100;
-    const heightPx = obj.height || 50;
+    // 关键：使用 FabricImage 框的视觉尺寸（width × scaleX, height × scaleY），
+    // 而不是 obj.width/height（obj 内部逻辑尺寸，可能因拖动而偏离真实比例）。
+    // 用视觉尺寸生成条形码/QR，生成的图比例 = 框比例，填进框时不被拉伸。
+    const widthPx = Math.round((obj.width || 100) * (obj.scaleX || 1));
+    const heightPx = Math.round((obj.height || 50) * (obj.scaleY || 1));
 
     if (elementType === 'barcode') {
       const format = obj.barcodeFormat || 'CODE128';
       const showText = obj.showText ?? true;
       const color = obj.foregroundColor || '#000000';
 
+      // 把视觉宽传给 generateBarcodeSVG，用于重写 SVG viewBox 比例
       const dataUrl = generateBarcodeSVG(
         resolvedValue,
         format,
         heightPx,
         showText,
-        color
+        color,
+        widthPx
       );
 
       return { ...obj, src: dataUrl };
@@ -135,11 +140,10 @@ export class LabelDataBindingService {
         return obj;
       }
 
-      const size = Math.min(widthPx, heightPx);
+      // QR 用视觉尺寸的最大边作为正方形边长
+      const size = Math.max(widthPx, heightPx);
       const dataUrl = await generateQRCodeSVG(resolvedValue, size);
 
-      // 保留模板里 obj.scaleX/scaleY（如果用户在编辑器里调整过 QR 大小），
-      // 不再像之前那样强行设回 1（会改变视觉尺寸导致位置错乱）
       return { ...obj, src: dataUrl };
     }
 
@@ -172,14 +176,22 @@ export class LabelDataBindingService {
 }
 
 /**
- * 生成带颜色的自定义条形码（SVG）
+ * 生成条形码 SVG。
+ *
+ * JsBarcode 输出的 SVG viewBox 宽度由 value 字符数决定（总条宽 + margin），
+ * 与目标视觉宽度无关。这里生成后改写 viewBox 让它等于目标尺寸（width × height），
+ * 配合 preserveAspectRatio="none" 使条形码按比例绘制，填进 PDF 框时不被拉伸。
+ *
+ * @param width 视觉宽度（px），用于重写 SVG viewBox
+ * @param height 视觉高度（px），传给 JsBarcode 控制条高
  */
 function generateBarcodeSVG(
   value: string,
   format: string,
   height: number,
   showText: boolean,
-  color: string
+  color: string,
+  width?: number
 ): string {
   if (!value) {
     return createPlaceholder(value, 'BC', 80);
@@ -194,6 +206,16 @@ function generateBarcodeSVG(
       fontColor: color,
       margin: 2
     });
+
+    // 重写 viewBox/width/height：让 SVG 坐标系比例 = 视觉尺寸比例，
+    // 条形码填进 PDF 框时不被拉伸。
+    if (width && width > 0 && height > 0) {
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.setAttribute('width', String(width));
+      svg.setAttribute('height', String(height));
+      svg.setAttribute('preserveAspectRatio', 'none');
+    }
+
     const serializer = new XMLSerializer();
     const svgString = serializer.serializeToString(svg);
     return 'data:image/svg+xml;base64,' + btoa(svgString);
@@ -204,7 +226,14 @@ function generateBarcodeSVG(
 }
 
 /**
- * 生成 QR 码（SVG base64）
+ * 生成 QR 码（SVG dataURL）。
+ *
+ * qrcode 库 `toString({type: 'svg'})` 输出的 SVG viewBox 由模块数决定，
+ * 与目标视觉尺寸无关。这里生成后改写 viewBox 让它等于目标尺寸，
+ * 配合 preserveAspectRatio="none" 让 svg2pdf 按目标尺寸 1:1 渲染，
+ * QR 码不被拉伸。
+ *
+ * @param size 视觉正方形边长（px）
  */
 async function generateQRCodeSVG(
   value: string,
@@ -214,16 +243,13 @@ async function generateQRCodeSVG(
     return createPlaceholder(value, 'QR', size);
   }
   try {
+    // 用 toCanvas 生成 PNG dataURL，与编辑器画布 (editor-canvas.service.ts) 路径保持一致。
+    // 之前用 toString({type:'svg'}) 会让 viewBox 与 path 坐标系不一致，
+    // 出现 QR 码只占 27% 区域的 bug。
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
-    // margin: 1 留 1 个模块的白色静默区作为缓冲，
-    // 防止 margin: 0 贴边时被 PDF 渲染裁掉最底/最右一行
-    await (QRCode as any).toCanvas(canvas, value, {
-      width: size,
-      margin: 1,
-      color: { dark: '#000000', light: '#ffffff' }
-    });
+    (QRCode as any).toCanvas(canvas, value, { width: size, margin: 1 });
     return canvas.toDataURL('image/png');
   } catch (e) {
     console.error('QR code generation failed:', e);
