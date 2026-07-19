@@ -92,9 +92,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private templateId: string | null = null;
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
-  readonly hasSelection = computed(
-    () => this.selection.hasSelection() || this.selection.hasMultiSelection(),
-  );
+  readonly hasSelection = this.selection.hasSelection;
+  readonly hasMultiSelection = this.selection.hasMultiSelection;
 
   /** Single-page template signal */
   readonly template = signal<LabelTemplate>({
@@ -440,10 +439,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     void this.undoRedo.redo();
   }
 
-  hasMultiSelection(): boolean {
-    return this.selection.hasMultiSelection();
-  }
-
   cloneSelection(): void {
     this.operations.cloneSelected();
   }
@@ -523,32 +518,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       this.templateName(),
       this.template().printSetting,
     );
-  }
-
-  saveCanvasToJSON(): void {
-    localStorage.setItem('KanvasDocument', JSON.stringify(this.buildLabelTemplate()));
-  }
-
-  async loadCanvasFromJSON(): Promise<void> {
-    const saved = localStorage.getItem('KanvasDocument');
-    if (!saved) {
-      return;
-    }
-
-    try {
-      const labelTemplate = JSON.parse(saved) as LabelTemplate;
-      // Ensure printSetting has default values for missing properties
-      const printSetting = {
-        ...DEFAULT_PRINT_SETTING,
-        ...labelTemplate.printSetting,
-      };
-      this.template.set({ ...labelTemplate, printSetting });
-      if (labelTemplate.label.canvasJson) {
-        await this.loadPage(labelTemplate.label);
-      }
-    } catch (e) {
-      console.error('Failed to load canvas from JSON:', e);
-    }
   }
 
   rasterize(): void {

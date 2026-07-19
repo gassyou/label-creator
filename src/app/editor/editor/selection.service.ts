@@ -22,7 +22,7 @@
  * on `EditorCanvasService.initialize()` — that wiring forwards the active
  * Fabric object into this service.
  */
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { FabricRenderer } from '../render/fabric-renderer';
 import { LabelDocumentService } from '../document/label-document.service';
 import { BaseElement } from '../models/element-base';
@@ -51,21 +51,16 @@ export class SelectionService {
   readonly selectionProperties = this.doc.selectionProperties;
 
   /**
-   * True if any Fabric object is currently active on the canvas. Used by
-   * the toolbar to enable/disable selection-dependent buttons.
+   * Signal — true if any Fabric object is currently active on the canvas.
+   * Drives the toolbar's selection-dependent buttons.
    */
-  hasSelection(): boolean {
-    return !!this.renderer.getCanvas()?.getActiveObject();
-  }
+  readonly hasSelection = signal(false);
 
   /**
-   * True if more than one Fabric object is currently active. Drives
-   * the multi-selection alignment / distribute toolbar cluster.
+   * Signal — true if more than one Fabric object is currently active.
+   * Drives the multi-selection alignment / distribute toolbar cluster.
    */
-  hasMultiSelection(): boolean {
-    const objects = this.renderer.getCanvas()?.getActiveObjects();
-    return objects ? objects.length > 1 : false;
-  }
+  readonly hasMultiSelection = signal(false);
 
   // ---------------------------------------------------------------------
   // Called by EditorCanvasService on Fabric events
@@ -84,6 +79,8 @@ export class SelectionService {
       this.selected.set(null);
       this.textEditorVisible.set(false);
       this.figureEditorVisible.set(false);
+      this.hasSelection.set(false);
+      this.hasMultiSelection.set(false);
       this.doc.selectElement(null);
       return;
     }
@@ -110,6 +107,8 @@ export class SelectionService {
       this.selected.set(dummyElement as unknown as BaseElement);
       this.textEditorVisible.set(false);
       this.figureEditorVisible.set(false);
+      this.hasSelection.set(true);
+      this.hasMultiSelection.set(true);
       this.doc.selectElement(null);
       return;
     }
@@ -117,15 +116,17 @@ export class SelectionService {
     const id = this.getObjectId(object);
     const element = (this.doc.elements().get(id) ?? null) as BaseElement | null;
     this.selected.set(element);
+    this.hasSelection.set(true);
+    this.hasMultiSelection.set(false);
 
-    // Backfill: hydrate doc.elements if the element pre-dates the
-    // LabelDocumentService refactor (e.g. elements hydrated from a saved
-    // template via loadPage). Without this, the central document's
-    // `selection` computed returns null and the property panel renders its
-    // muted placeholder instead of the element's properties.
-    if (element && !this.doc.elements().has(id)) {
-      this.doc.addElement(element as unknown as LabelElement);
-    }
+    // NOTE: doc.elements() backfill was REMOVED (Phase 18). All elements
+    // are now backfilled correctly upstream by `loadPage` (Phase 11) and by
+    // `Add*Command` (Phase 6). Backfilling here caused a write→effect→fabric
+    // →object:modified→handleFabricSelection→backfill→write loop that
+    // manifested as NG0103. If a Fabric object somehow exists without a
+    // doc entry (defensive), the central document's `selection` computed
+    // returns null and the property panel renders its muted placeholder —
+    // acceptable for a pathological case.
 
     this.textEditorVisible.set(false);
     this.figureEditorVisible.set(false);
@@ -155,20 +156,20 @@ export class SelectionService {
    *    object, or multi-select), refresh selection state without writing.
    */
   handleFabricModification(object: any): void {
-    const wrote = this.renderer.handleObjectModified(object);
-    if (wrote) {
-      this.handleFabricSelection(object);
-      return;
-    }
-
-    if (!object) {
-      this.handleFabricSelection(null);
-      return;
-    }
-
-    // Echoes of doc-driven updates or multi-select: just refresh the
-    // selection state without writing to the document.
-    this.handleFabricSelection(this.renderer.getCanvas()?.getActiveObject() ?? null);
+    // Phase 18 fix: we previously re-entered `handleFabricSelection` here,
+    // which mutated `selected` / `hasSelection` signals and re-evaluated
+    // every consumer of those signals on every Fabric `object:modified`
+    // event. Combined with the doc-driven `applyElementsFromDoc` effect
+    // (which causes Fabric to fire `object:modified` echoes when its
+    // `set(...)` calls change geometry), this produced NG0103 because
+    // each renderer's write queued another full selection re-resolution.
+    //
+    // The write itself (`handleObjectModified`) is the only thing that
+    // needs to happen here — selection state is already in sync (Fabric's
+    // active object is unchanged across the modify). The doc write will
+    // emit a doc → fabric effect that is itself guarded by `syncDirection`,
+    // so we do not need to redo selection work.
+    this.renderer.handleObjectModified(object);
   }
 
   // ---------------------------------------------------------------------
