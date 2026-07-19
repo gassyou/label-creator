@@ -2,7 +2,7 @@
 import type { EditorCommand } from './editor-command';
 import type { EditorCanvasService } from '../editor-canvas.service';
 import { TextElement } from '../models/text-element';
-import { DEFAULT_SELECTION_STATE } from '../models/editor.models';
+import { DEFAULT_SELECTION_STATE, type LabelElement } from '../models/editor.models';
 
 export class AddTextCommand implements EditorCommand {
   readonly name = 'add-text';
@@ -26,6 +26,7 @@ export class AddTextCommand implements EditorCommand {
 
     const obj = await this.element.render(ctx.getRenderContext());
     ctx.elementRegistry.set(this.element.id, this.element);
+    ctx.doc.addElement(this.element as LabelElement);
     ctx.canvas.add(obj);
     ctx.selectItemAfterAdded(obj);
   }

@@ -6,6 +6,7 @@ import { CircleElement } from '../models/circle-element';
 import { TriangleElement } from '../models/triangle-element';
 import { LineElement } from '../models/line-element';
 import type { BaseElement } from '../models/element-base';
+import type { LabelElement } from '../models/editor.models';
 
 type ShapeType = 'square' | 'triangle' | 'circle' | 'line';
 
@@ -50,6 +51,7 @@ export class AddShapeCommand implements EditorCommand {
 
     const obj = await this.element.render(ctx.getRenderContext());
     ctx.elementRegistry.set(this.element.id, this.element);
+    ctx.doc.addElement(this.element as LabelElement);
     ctx.canvas.add(obj);
     ctx.selectItemAfterAdded(obj);
   }

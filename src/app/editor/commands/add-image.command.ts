@@ -2,6 +2,7 @@
 import type { EditorCommand } from './editor-command';
 import type { EditorCanvasService } from '../editor-canvas.service';
 import { ImageElement } from '../models/image-element';
+import type { LabelElement } from '../models/editor.models';
 
 export class AddImageCommand implements EditorCommand {
   readonly name = 'add-image';
@@ -21,6 +22,7 @@ export class AddImageCommand implements EditorCommand {
 
     const obj = await this.element.render(ctx.getRenderContext());
     ctx.elementRegistry.set(this.element.id, this.element);
+    ctx.doc.addElement(this.element as LabelElement);
     ctx.canvas.add(obj);
     ctx.selectItemAfterAdded(obj);
   }

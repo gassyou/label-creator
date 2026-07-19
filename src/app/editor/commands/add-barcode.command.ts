@@ -2,6 +2,7 @@
 import type { EditorCommand } from './editor-command';
 import type { EditorCanvasService } from '../editor-canvas.service';
 import { BarcodeElement, type BarcodeFormat } from '../models/barcode-element';
+import type { LabelElement } from '../models/editor.models';
 
 export class AddBarcodeCommand implements EditorCommand {
   readonly name = 'add-barcode';
@@ -27,6 +28,7 @@ export class AddBarcodeCommand implements EditorCommand {
 
     const obj = await this.element.render(ctx.getRenderContext());
     ctx.elementRegistry.set(this.element.id, this.element);
+    ctx.doc.addElement(this.element as LabelElement);
     ctx.canvas.add(obj);
     ctx.selectItemAfterAdded(obj);
   }

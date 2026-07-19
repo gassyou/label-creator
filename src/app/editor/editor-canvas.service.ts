@@ -32,7 +32,7 @@ export class EditorCanvasService {
   readonly canUndoSignal = signal(false);
   readonly canRedoSignal = signal(false);
 
-  private doc = inject(LabelDocumentService);
+  readonly doc = inject(LabelDocumentService);
 
   public canvas: Canvas | null = null;
   private drawingModeEnabled = false;
@@ -315,6 +315,10 @@ export class EditorCanvasService {
     activeObjects.forEach((object) => {
       const id = this.getObjectId(object);
       this.elementRegistry.delete(id);
+      // Mirror removal into the central document so doc consumers stay in sync.
+      if (id && this.doc.elements().has(id)) {
+        this.doc.removeElement(id);
+      }
       this.canvas?.remove(object);
     });
     this.canvas.requestRenderAll();
@@ -329,6 +333,13 @@ export class EditorCanvasService {
     if (!this.canvas) return;
     const objects = this.canvas.getObjects().slice();
     for (const obj of objects) this.canvas.remove(obj);
+    // Mirror the wipe into the central document. LabelDocumentService has no
+    // batch-clear method, so loop with the existing removeElement API.
+    for (const id of this.elementRegistry.keys()) {
+      if (this.doc.elements().has(id)) {
+        this.doc.removeElement(id);
+      }
+    }
     this.elementRegistry.clear();
     this.handleSelection(null);
     this.touchRevision();
@@ -1350,6 +1361,15 @@ export class EditorCanvasService {
       const id = this.getObjectId(object);
       const element = this.elementRegistry.get(id) ?? null;
       this.selected.set(element);
+
+      // NEW: backfill doc.elements for elements that pre-date the
+      // LabelDocumentService refactor (e.g. elements hydrated from a saved
+      // template via loadPage). Without this, the central document's
+      // `selection` computed returns null and the property panel renders
+      // its muted placeholder instead of the element's properties.
+      if (element && !this.doc.elements().has(id)) {
+        this.doc.addElement(element as LabelElement);
+      }
 
       this.textEditorVisible.set(false);
       this.figureEditorVisible.set(false);
