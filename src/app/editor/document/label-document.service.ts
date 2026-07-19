@@ -87,6 +87,11 @@ export class LabelDocumentService {
     }
   }
 
+  /** Replaces the entire elements Map. Used by undo/redo and external imports. */
+  setElements(elements: ReadonlyMap<string, LabelElement>): void {
+    this.elements.set(elements);
+  }
+
   selectElement(id: string | null): void {
     this.selectionId.set(id);
   }
