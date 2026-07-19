@@ -250,10 +250,17 @@ export class FabricRenderer {
   /**
    * Bumps the revision counter. No-op while {@link hydrating} is true.
    * Replaces `EditorCanvasService.touchRevision()`.
+   *
+   * Also requests a canvas re-render so any in-flight Fabric mutation
+   * (e.g. an add-shape command that called `canvasAdd` without a paired
+   * `requestRenderAll`) is guaranteed to paint. Cheap when nothing changed
+   * (Fabric coalesces), and the safety net when downstream consumers
+   * (e.g. `applyElementsFromDoc`) didn't reach their own `requestRenderAll`.
    */
   touchRevision(): void {
     if (this.hydrating) return;
     this.revision.update((v) => v + 1);
+    this.canvas?.requestRenderAll();
   }
 
   /**
@@ -347,6 +354,14 @@ export class FabricRenderer {
 
   private applyElementsFromDoc(elements: ReadonlyMap<string, LabelElement>): void {
     if (!this.canvas) return;
+    // Defensive: when the editor is mid-load (loadFromJSON rebuild) or
+    // mid-command (undo/redo), the doc ↔ Fabric effect must not reapply
+    // fields to Fabric. Command paths (Add*, loadPage) already mutate
+    // Fabric directly; double-applying risks rejecting empty/invalid colors
+    // with the Fabric.js "#rrggbb" console error and aborting the rest of
+    // the loop (including the final `requestRenderAll`), which leaves the
+    // canvas in a stale state.
+    if (this.hydrating) return;
     this.syncDirection.set('doc-to-fabric');
     try {
       const canvas = this.canvas;
@@ -408,14 +423,22 @@ export class FabricRenderer {
             setObj.set('textAlign', anyData['textAlign']);
           if (anyData['textDecoration'] !== undefined)
             setObj.set('textDecoration', anyData['textDecoration']);
-          if (anyData['fill'] !== undefined) setObj.set('fill', anyData['fill']);
-          else if (anyData['color'] !== undefined) setObj.set('fill', anyData['color']);
-          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
+          // Defensive: empty string fill/stroke throws the
+          // "#rrggbb" Fabric error. Skip when the value isn't a non-empty
+          // string so a partial doc update with `color: ''` doesn't break
+          // the loop (and the trailing `requestRenderAll`).
+          const textFill = anyData['fill'] ?? anyData['color'];
+          if (typeof textFill === 'string' && textFill.length > 0) {
+            setObj.set('fill', textFill);
+          }
+          if (anyData['stroke']) setObj.set('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
             setObj.set('strokeWidth', anyData['strokeWidth']);
         } else if (t === 'rect' || t === 'circle' || t === 'triangle' || t === 'image') {
-          if (anyData['fill'] !== undefined) setObj.set('fill', anyData['fill']);
-          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
+          if (typeof anyData['fill'] === 'string' && (anyData['fill'] as string).length > 0) {
+            setObj.set('fill', anyData['fill']);
+          }
+          if (anyData['stroke']) setObj.set('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
             setObj.set('strokeWidth', anyData['strokeWidth']);
         } else if (t === 'line') {
@@ -428,7 +451,7 @@ export class FabricRenderer {
             const y2 = y1 + ((anyData['height'] as number) ?? 0);
             setObj.set({ x2, y2 });
           }
-          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
+          if (anyData['stroke']) setObj.set('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
             setObj.set('strokeWidth', anyData['strokeWidth']);
         } else if (t === 'barcode' || t === 'qrcode') {
@@ -450,6 +473,11 @@ export class FabricRenderer {
 
   private applyPageFromDoc(page: LabelPageSettings): void {
     if (!this.canvas) return;
+    // Defensive: skip when mid-load / mid-command. See applyElementsFromDoc
+    // for rationale. loadPage handles its own background color assignment
+    // with the `|| '#ffffff'` fallback; we don't want to overwrite that with
+    // an empty string during the same load.
+    if (this.hydrating) return;
     this.syncDirection.set('doc-to-fabric');
     try {
       // Update canvas dimensions (px) and background color/image. Mirrors
@@ -458,11 +486,12 @@ export class FabricRenderer {
       const wPx = Math.round(page.widthMm * PX_PER_MM);
       const hPx = Math.round(page.heightMm * PX_PER_MM);
       this.canvas.setDimensions({ width: wPx, height: hPx });
-      if (page.backgroundColor) {
-        this.canvas.backgroundColor = page.backgroundColor;
-      } else {
-        this.canvas.backgroundColor = '';
-      }
+      // Fabric.js rejects empty-string `backgroundColor` with
+      // 'does not conform to the required format. The format is "#rrggbb"'.
+      // Empty string is NOT nullish, so `??` does not catch it; defend
+      // explicitly so the editor doesn't spam the console and the
+      // requestRenderAll below doesn't bail.
+      this.canvas.backgroundColor = page.backgroundColor || '#ffffff';
       this.canvas.requestRenderAll();
     } finally {
       this.syncDirection.set('idle');
