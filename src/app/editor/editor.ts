@@ -34,6 +34,7 @@ import {
 } from './models/label.models';
 import { webFontLoader } from '../print/generators/web-font-loader';
 import { LabelDocumentService } from './document';
+import { OperationsService } from './editor/operations.service';
 
 @Component({
   selector: 'app-editor',
@@ -44,7 +45,7 @@ import { LabelDocumentService } from './document';
     EditorToolStripComponent,
     PrintSettingDialogComponent,
   ],
-  providers: [EditorCanvasService, LabelDocumentService],
+  providers: [EditorCanvasService, LabelDocumentService, OperationsService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
@@ -53,6 +54,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('htmlCanvas', { static: true }) htmlCanvas!: ElementRef<HTMLCanvasElement>;
 
   readonly canvasService = inject(EditorCanvasService);
+  private readonly operations = inject(OperationsService);
   private readonly templateService = inject(TemplateService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -219,20 +221,20 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         this.canvasService.clearSelection();
         return;
       case 'text':
-        void this.canvasService.addText(this.textString);
+        void this.operations.addText(this.textString);
         this.textString = 'Text';
         return;
       case 'square':
       case 'circle':
       case 'triangle':
       case 'line':
-        void this.canvasService.addShape(tool);
+        void this.operations.addShape(tool);
         return;
       case 'qrcode':
-        void this.canvasService.addQRCode();
+        void this.operations.addQRCode();
         return;
       case 'barcode':
-        void this.canvasService.addBarcode('CODE128');
+        void this.operations.addBarcode('CODE128');
         return;
     }
   }
