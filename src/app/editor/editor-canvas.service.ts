@@ -1632,13 +1632,100 @@ export class EditorCanvasService {
     if (!this.canvas) return;
     this.isApplyingFromDoc = true;
     try {
-      // Coarse scaffold: build a Map<id, FabricObject> from the canvas's
-      // current objects (each has `id` from ElementFactory.fromFabricObject),
-      // then for each (id, data) in the document, either update the existing
-      // Fabric object's properties or remove it if absent from the doc.
+      const canvas = this.canvas;
+
+      // Build an id → FabricObject map from what is currently on the canvas.
+      const onCanvas = new Map<string, any>();
+      canvas.getObjects().forEach((obj) => {
+        const id = this.getObjectId(obj);
+        if (id) onCanvas.set(id, obj);
+      });
+
+      // For each element in the document, push the doc's fields onto the
+      // matching Fabric object. Fabric objects use `set({...})` for proper
+      // change events. We deliberately skip fields that require image
+      // regeneration (barcode.text / barcodeFormat / showText, qrcode.text /
+      // errorCorrectionLevel / foregroundColor / backgroundColor) — that
+      // needs a follow-up that re-issues the QR/barcode image. We DO push
+      // the fields Fabric `set()` understands natively.
       //
-      // The full reconciliation is large and out of scope for this task —
-      // this is the integration point. Track the rest as a follow-up.
+      // Document elements that are not on the canvas: leave them alone (new
+      // elements still come through Add*Command). Canvas objects that are
+      // not in the document: leave them alone (deletion still goes through
+      // DeleteSelectedCommand).
+      for (const [id, data] of elements.entries()) {
+        const obj = this.elementRegistry.get(id) ? onCanvas.get(id) : null;
+        if (!obj) continue;
+
+        const anyData = data as unknown as Record<string, unknown>;
+        const setObj = obj as any;
+        const t = anyData['type'] as string | undefined;
+
+        // Common: opacity, geometry, rotation
+        if (anyData['opacity'] !== undefined) setObj.set('opacity', anyData['opacity']);
+        if (anyData['rotation'] !== undefined) setObj.set('angle', anyData['rotation']);
+
+        // Position — written by Fabric → doc via handleObjectModified.
+        // Apply only when present in the patch (doc carries current truth).
+        if (anyData['x'] !== undefined) setObj.set('left', anyData['x']);
+        if (anyData['y'] !== undefined) setObj.set('top', anyData['y']);
+
+        if (anyData['width'] !== undefined) setObj.set('width', anyData['width']);
+        if (anyData['height'] !== undefined) setObj.set('height', anyData['height']);
+        // After geometry changes reset scale so width/height are visual.
+        if (anyData['width'] !== undefined || anyData['height'] !== undefined) {
+          setObj.set('scaleX', 1);
+          setObj.set('scaleY', 1);
+        }
+
+        if (t === 'text') {
+          if (anyData['text'] !== undefined) setObj.set('text', anyData['text']);
+          if (anyData['fontSize'] !== undefined) setObj.set('fontSize', anyData['fontSize']);
+          if (anyData['fontFamily'] !== undefined)
+            setObj.set('fontFamily', anyData['fontFamily']);
+          if (anyData['fontWeight'] !== undefined)
+            setObj.set('fontWeight', anyData['fontWeight']);
+          if (anyData['fontStyle'] !== undefined)
+            setObj.set('fontStyle', anyData['fontStyle']);
+          if (anyData['textAlign'] !== undefined)
+            setObj.set('textAlign', anyData['textAlign']);
+          if (anyData['textDecoration'] !== undefined)
+            setObj.set('textDecoration', anyData['textDecoration']);
+          if (anyData['fill'] !== undefined) setObj.set('fill', anyData['fill']);
+          else if (anyData['color'] !== undefined) setObj.set('fill', anyData['color']);
+          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
+          if (anyData['strokeWidth'] !== undefined)
+            setObj.set('strokeWidth', anyData['strokeWidth']);
+        } else if (t === 'rect' || t === 'circle' || t === 'triangle' || t === 'image') {
+          if (anyData['fill'] !== undefined) setObj.set('fill', anyData['fill']);
+          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
+          if (anyData['strokeWidth'] !== undefined)
+            setObj.set('strokeWidth', anyData['strokeWidth']);
+        } else if (t === 'line') {
+          // Line length is encoded as width/height (x2-x1, y2-y1) — push to
+          // the actual Fabric line endpoint fields.
+          const x1 = (obj as any).x1 ?? 0;
+          const y1 = (obj as any).y1 ?? 0;
+          if (anyData['width'] !== undefined || anyData['height'] !== undefined) {
+            const x2 = x1 + ((anyData['width'] as number) ?? 0);
+            const y2 = y1 + ((anyData['height'] as number) ?? 0);
+            setObj.set({ x2, y2 });
+          }
+          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
+          if (anyData['strokeWidth'] !== undefined)
+            setObj.set('strokeWidth', anyData['strokeWidth']);
+        } else if (t === 'barcode' || t === 'qrcode') {
+          // Image-backed elements. Width/height/opacity handled above.
+          // Image regeneration for value/format/etc. is left for follow-up.
+        }
+
+        // Refresh coords so the next render uses the new state.
+        if (typeof (obj as any).setCoords === 'function') {
+          (obj as any).setCoords();
+        }
+      }
+
+      canvas.requestRenderAll();
     } finally {
       this.isApplyingFromDoc = false;
     }
