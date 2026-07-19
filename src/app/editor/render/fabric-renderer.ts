@@ -77,19 +77,49 @@ export class FabricRenderer {
   /** Current interaction mode (false = select/edit, true = drawing). */
   private drawingMode = false;
 
+  /**
+   * Idempotent setter used by {@link applyElementsFromDoc}. Fabric's `set()`
+   * ALWAYS fires `object:modified`, even when the new value equals the
+   * current one. The doc → fabric effect calls `set()` for every field of
+   * every element on every doc change; without this guard each `set()` would
+   * echo back through `handleObjectModified` → `doc.updateElement` →
+   * `doc.elements` → this effect, producing an infinite NG0103 cycle.
+   *
+   * Reading `obj.get(key)` first lets us skip the no-op assignments so
+   * Fabric doesn't fire spurious change events for unchanged values.
+   */
+  private setIfChanged(obj: any, key: string, value: unknown): void {
+    if (obj.get(key) !== value) {
+      obj.set(key, value);
+    }
+  }
+
   constructor() {
     // document → fabric: re-render elements when the document changes.
     // Suppressed while a fabric → doc write is in flight (echo prevention).
+    //
+    // PHASE 20 FIX: `syncDirection` is read inside `untracked(...)` so this
+    // effect does NOT register it as a dependency. The previous code read
+    // `syncDirection()` directly, which made the effect re-run every time the
+    // body (or the trailing microtask) flipped the guard back to 'idle'.
+    // Combined with the `queueMicrotask(() => syncDirection.set('idle'))` reset
+    // inside `applyElementsFromDoc`/`applyPageFromDoc`, the two effects fired
+    // in lockstep forever — Angular detected a signal that was read inside an
+    // effect and written again during/after the same effect, surfacing as
+    // NG0103 ("endless change notifications").
     effect(() => {
       const elements = this.doc.elements();
-      if (this.syncDirection() === 'fabric-to-doc') return;
+      const guard = untracked(() => this.syncDirection());
+      if (guard === 'fabric-to-doc') return;
       untracked(() => this.applyElementsFromDoc(elements));
     });
 
     // document → fabric: re-render canvas (size, background) when page changes.
+    // Same PHASE 20 FIX as above: read `syncDirection` inside `untracked`.
     effect(() => {
       const page = this.doc.page();
-      if (this.syncDirection() === 'fabric-to-doc') return;
+      const guard = untracked(() => this.syncDirection());
+      if (guard === 'fabric-to-doc') return;
       untracked(() => this.applyPageFromDoc(page));
     });
   }
@@ -260,7 +290,11 @@ export class FabricRenderer {
   touchRevision(): void {
     if (this.hydrating) return;
     this.revision.update((v) => v + 1);
-    this.canvas?.requestRenderAll();
+    try {
+      this.canvas?.requestRenderAll();
+    } catch (err) {
+      console.warn('[FabricRenderer] touchRevision requestRenderAll failed:', err);
+    }
   }
 
   /**
@@ -343,7 +377,9 @@ export class FabricRenderer {
     try {
       this.doc.updateElement(id, patch);
     } finally {
-      this.syncDirection.set('idle');
+      // Keep the fabric → doc guard active through queued Fabric events so
+      // they cannot echo this document write back into the document effect.
+      queueMicrotask(() => this.syncDirection.set('idle'));
     }
     return true;
   }
@@ -385,6 +421,7 @@ export class FabricRenderer {
       // elements still come through Add*Command). Canvas objects that are
       // not in the document: leave them alone (deletion still goes through
       // DeleteSelectedCommand).
+      let anyChanged = false;
       for (const [id, data] of elements.entries()) {
         const obj = onCanvas.get(id);
         if (!obj) continue;
@@ -393,81 +430,110 @@ export class FabricRenderer {
         const setObj = obj as any;
         const t = anyData['type'] as string | undefined;
 
+        // Track whether any setter on this object actually changed a value.
+        // Used at the end to decide whether `requestRenderAll` is needed.
+        let objChanged = false;
+        const track = (key: string, value: unknown): void => {
+          if (setObj.get(key) !== value) {
+            setObj.set(key, value);
+            objChanged = true;
+          }
+        };
+
         // Common: opacity, geometry, rotation
-        if (anyData['opacity'] !== undefined) setObj.set('opacity', anyData['opacity']);
-        if (anyData['rotation'] !== undefined) setObj.set('angle', anyData['rotation']);
+        if (anyData['opacity'] !== undefined) track('opacity', anyData['opacity']);
+        if (anyData['rotation'] !== undefined) track('angle', anyData['rotation']);
 
         // Position — written by Fabric → doc via handleObjectModified.
         // Apply only when present in the patch (doc carries current truth).
-        if (anyData['x'] !== undefined) setObj.set('left', anyData['x']);
-        if (anyData['y'] !== undefined) setObj.set('top', anyData['y']);
+        if (anyData['x'] !== undefined) track('left', anyData['x']);
+        if (anyData['y'] !== undefined) track('top', anyData['y']);
 
-        if (anyData['width'] !== undefined) setObj.set('width', anyData['width']);
-        if (anyData['height'] !== undefined) setObj.set('height', anyData['height']);
+        if (anyData['width'] !== undefined) track('width', anyData['width']);
+        if (anyData['height'] !== undefined) track('height', anyData['height']);
         // After geometry changes reset scale so width/height are visual.
         if (anyData['width'] !== undefined || anyData['height'] !== undefined) {
-          setObj.set('scaleX', 1);
-          setObj.set('scaleY', 1);
+          track('scaleX', 1);
+          track('scaleY', 1);
         }
 
         if (t === 'text') {
-          if (anyData['text'] !== undefined) setObj.set('text', anyData['text']);
-          if (anyData['fontSize'] !== undefined) setObj.set('fontSize', anyData['fontSize']);
+          if (anyData['text'] !== undefined) track('text', anyData['text']);
+          if (anyData['fontSize'] !== undefined) track('fontSize', anyData['fontSize']);
           if (anyData['fontFamily'] !== undefined)
-            setObj.set('fontFamily', anyData['fontFamily']);
+            track('fontFamily', anyData['fontFamily']);
           if (anyData['fontWeight'] !== undefined)
-            setObj.set('fontWeight', anyData['fontWeight']);
+            track('fontWeight', anyData['fontWeight']);
           if (anyData['fontStyle'] !== undefined)
-            setObj.set('fontStyle', anyData['fontStyle']);
+            track('fontStyle', anyData['fontStyle']);
           if (anyData['textAlign'] !== undefined)
-            setObj.set('textAlign', anyData['textAlign']);
+            track('textAlign', anyData['textAlign']);
           if (anyData['textDecoration'] !== undefined)
-            setObj.set('textDecoration', anyData['textDecoration']);
+            track('textDecoration', anyData['textDecoration']);
           // Defensive: empty string fill/stroke throws the
           // "#rrggbb" Fabric error. Skip when the value isn't a non-empty
           // string so a partial doc update with `color: ''` doesn't break
           // the loop (and the trailing `requestRenderAll`).
           const textFill = anyData['fill'] ?? anyData['color'];
           if (typeof textFill === 'string' && textFill.length > 0) {
-            setObj.set('fill', textFill);
+            track('fill', textFill);
           }
-          if (anyData['stroke']) setObj.set('stroke', anyData['stroke']);
+          if (anyData['stroke']) track('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
-            setObj.set('strokeWidth', anyData['strokeWidth']);
+            track('strokeWidth', anyData['strokeWidth']);
         } else if (t === 'rect' || t === 'circle' || t === 'triangle' || t === 'image') {
           if (typeof anyData['fill'] === 'string' && (anyData['fill'] as string).length > 0) {
-            setObj.set('fill', anyData['fill']);
+            track('fill', anyData['fill']);
           }
-          if (anyData['stroke']) setObj.set('stroke', anyData['stroke']);
+          if (anyData['stroke']) track('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
-            setObj.set('strokeWidth', anyData['strokeWidth']);
+            track('strokeWidth', anyData['strokeWidth']);
         } else if (t === 'line') {
           // Line length is encoded as width/height (x2-x1, y2-y1) — push to
-          // the actual Fabric line endpoint fields.
+          // the actual Fabric line endpoint fields. Bulk set is kept as-is
+          // (no per-field getter comparison available in a single Fabric
+          // call); geometry is already idempotent on the doc side because
+          // handleObjectModified writes the same x/y/width/height values
+          // back that this effect reads, so unchanged geometry won't trigger
+          // object:modified downstream of `set({x2,y2})` either.
           const x1 = (obj as any).x1 ?? 0;
           const y1 = (obj as any).y1 ?? 0;
           if (anyData['width'] !== undefined || anyData['height'] !== undefined) {
             const x2 = x1 + ((anyData['width'] as number) ?? 0);
             const y2 = y1 + ((anyData['height'] as number) ?? 0);
-            setObj.set({ x2, y2 });
+            if ((obj as any).x2 !== x2 || (obj as any).y2 !== y2) {
+              setObj.set({ x2, y2 });
+              objChanged = true;
+            }
           }
-          if (anyData['stroke']) setObj.set('stroke', anyData['stroke']);
+          if (anyData['stroke']) track('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
-            setObj.set('strokeWidth', anyData['strokeWidth']);
+            track('strokeWidth', anyData['strokeWidth']);
         } else if (t === 'barcode' || t === 'qrcode') {
           // Image-backed elements. Width/height/opacity handled above.
           // Image regeneration for value/format/etc. is left for follow-up.
         }
 
         // Refresh coords so the next render uses the new state.
-        if (typeof (obj as any).setCoords === 'function') {
+        if (objChanged && typeof (obj as any).setCoords === 'function') {
           (obj as any).setCoords();
         }
+        if (objChanged) anyChanged = true;
       }
 
-      canvas.requestRenderAll();
+      // Only request a redraw when something actually changed. A no-op effect
+      // (e.g. the editor writing back identical values during a snapshot
+      // restore) skips the render call entirely, avoiding one more round-trip
+      // through Fabric's render scheduler.
+      if (anyChanged) canvas.requestRenderAll();
     } finally {
-      this.syncDirection.set('idle');
+      // Defer the reset to a microtask so any Fabric events queued during
+      // the iteration (object:modified, etc.) see the guard still set and
+      // skip their doc-write. Without this, the finally would clear
+      // syncDirection synchronously, then queued Fabric events would fire
+      // after the guard is gone and echo the doc update back into the doc,
+      // re-triggering this effect forever.
+      queueMicrotask(() => this.syncDirection.set('idle'));
     }
   }
 
@@ -494,7 +560,13 @@ export class FabricRenderer {
       this.canvas.backgroundColor = page.backgroundColor || '#ffffff';
       this.canvas.requestRenderAll();
     } finally {
-      this.syncDirection.set('idle');
+      // Defer the reset to a microtask so any Fabric events queued during
+      // the iteration (object:modified, etc.) see the guard still set and
+      // skip their doc-write. Without this, the finally would clear
+      // syncDirection synchronously, then queued Fabric events would fire
+      // after the guard is gone and echo the doc update back into the doc,
+      // re-triggering this effect forever.
+      queueMicrotask(() => this.syncDirection.set('idle'));
     }
   }
 
