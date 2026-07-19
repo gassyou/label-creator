@@ -68,8 +68,9 @@ Split `editor-canvas.service.ts` into four cohesive layers with one clear respon
   - `randomId(): string` — moved from editor-canvas.service
   - `extend(obj, id): void` — moved from editor-canvas.service
   - `extendWithCustomProperties(obj, props): void` — moved (renamed already)
-- `render/canvas-state.ts` — reactive `Canvas | null` holder + dispose lifecycle
 - `render/element-renderer.ts` — helpers for `FabricImage.fromURL` and other Fabric creation patterns
+
+**Removed from earlier draft (2026-07-19 review):** `render/canvas-state.ts`. Rationale: YAGNI. The Fabric `Canvas` instance already owns its own state; wrapping it in another `signal<Canvas | null>` service is an anemia layer. `fabric-renderer.ts` directly holds `canvas: Canvas | null` plus the two lifecycle methods (`initialize(element)` / `dispose()`) currently inline in `editor-canvas.service.ts:84-120`.
 
 **Layer rules:**
 - Imports from `model/` (read-only).
@@ -118,6 +119,16 @@ Split `editor-canvas.service.ts` into four cohesive layers with one clear respon
   - `load(id: string): Promise<LabelTemplate | null>` — orchestrates storage read
   - `list(): Promise<TemplateSummary[]>` — list available templates
 - `persistence/template.storage.ts` — already exists; becomes the storage backend (`LabelTemplateStore`)
+
+**Existing-functionality note (2026-07-19 review):** the storage backend is already implemented (60% done). `src/app/template/template.storage.ts` defines `TemplateStorageService` abstract class with `localStorage` (`LocalStorageTemplateService`) and HTTP (`HttpTemplateService`) implementations, exposing `getAll/getById/save/delete` over RxJS Observables. **Refactor mapping:**
+
+  - Rename `TemplateStorageService` → `LabelTemplateStorage`
+  - Move file `src/app/template/template.storage.ts` → `src/app/editor/persistence/template.storage.ts`
+  - Rename `LocalStorageTemplateService` → `LocalStorageLabelTemplateStore` (etc.) — drop the redundant "Service" suffix since the abstract base is now called "Storage"
+  - Convert return types from `Observable<T>` → `Promise<T>` to match Angular 21 idiom and the rest of this codebase (the persistence layer is the last holdout using RxJS for what is otherwise all-signals)
+  - Keep the abstraction (so `HttpLabelTemplateStore` can be swapped in) — the refactor preserves the polymorphism, just renames and resyncs
+
+**Missing piece (the 40% to fill):** the **converter** is currently inline in `editor.ts:buildLabelTemplate()` (line 268 area). Extract into `persistence/label-converter.ts` as pure functions. After extraction, `editor.ts`'s `buildLabelTemplate` becomes a one-liner that delegates to the converter.
 
 **Layer rules:**
 - Imports from `model/` (read-only) and `render/` (for `toJsonBlob`/`fromJsonBlob`).
@@ -225,6 +236,22 @@ Two options:
 
 `UndoRedoService` reads `renderer.toJsonBlob()` and `doc.page()` to construct snapshots.
 
+### Known follow-up: undo/redo bug (logged 2026-07-19, NOT fixed by this refactor)
+
+The current snapshot only contains `canvas.toJSON()` and does NOT include `LabelDocumentService` state. Concrete bug:
+
+1. Add element A → snapshot of empty canvas pushed → canvas has A.
+2. Drag A → `handleObjectModified` writes new geometry to `doc.elements[A]`.
+3. Add element B → snapshot of canvas-with-A-pushed → canvas has A+B; doc.elements has A+B.
+4. Press **Undo** → `loadFromJSON(snapshot-of-A-only)` → canvas now shows only A; but `doc.elements` still has A+B.
+5. Press **Redo** → `loadFromJSON(snapshot-of-A+B)` → canvas shows A+B (Fabric regenerates objects with new ids); but `doc.elements` still references the original A id (not the regenerated Fabric object's id) and still has the original A geometry (not the dragged position).
+
+Result: canvas and `doc.elements` diverge silently. Property panel shows stale values after every undo/redo. **Reproduction: add element, drag to new position, add another element, press undo, press redo → newly-added element may appear "different" in the panel vs canvas** (different ids, different geometry).
+
+**Required fix:** snapshot must contain `{ canvasJson, page: LabelPageSettings, elements: Map<id, LabelElement>, selectionId: string | null }`. On undo/redo, restore all four atomically. `loadPage` must also rebuild `doc.elements` (currently it only rebuilds `elementRegistry`, which is being phased out).
+
+**Defer:** per user request (2026-07-19), this bug is documented but not fixed in this refactor. Implementation guide is captured in the "follow-up" section below.
+
 ### Double-source-of-truth cleanup
 
 Today `EditorCanvasService.elementRegistry: Map<id, BaseElement>` is a parallel registry to `LabelDocumentService.elements: Map<id, LabelElement>`. Both exist; only one was being read by the property panels (after the recent fix).
@@ -301,3 +328,13 @@ If we keep the JSON snapshot approach, future undo-by-replay is harder.
 The design is **approved** for reference. Implementation is **deferred** per the user's request ("暂不动，只设计文档") — this document is the source of truth for any future refactor along these lines.
 
 When implementation begins, follow the migration order (Pilot: Render layer first), write a fresh implementation plan against this design, and run the existing manual smoke checks at each layer boundary.
+
+## Deferred Follow-Ups (logged 2026-07-19)
+
+These items were discussed and explicitly deferred by the user. They are out of scope for any immediate implementation but should be picked up before the four-layer refactor reaches completion.
+
+1. **Undo/Redo snapshot bug** (critical for correctness) — see the "Known follow-up" section above the migration path. Snapshot must atomically include `{ canvasJson, page, elements, selectionId }`. Reproduction: add element, drag, add another, undo, redo → newly-added element is inconsistent in panel vs canvas.
+
+2. **`render/canvas-state.ts` was removed from this design** (2026-07-19 review) — YAGNI. Fabric `Canvas` already owns its own state; `fabric-renderer.ts` directly holds `canvas: Canvas | null` plus the `initialize(element)` / `dispose()` lifecycle methods currently inline at `editor-canvas.service.ts:84-120`.
+
+3. **`TemplateStorageService` rename + move** — see "Existing-functionality note" above. The storage backend is 60% done; only renaming (`TemplateStorageService` → `LabelTemplateStorage`), relocating (`src/app/template/template.storage.ts` → `src/app/editor/persistence/template.storage.ts`), and API conversion (`Observable<T>` → `Promise<T>`) remain. The `buildLabelTemplate` glue in `editor.ts` extracts to `persistence/label-converter.ts`.
