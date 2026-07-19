@@ -1,34 +1,29 @@
 import { TestBed } from '@angular/core/testing';
-import { EditorCanvasService } from '../editor-canvas.service';
 import { LabelDocumentService } from '../document/label-document.service';
 import { FabricRenderer } from '../render/fabric-renderer';
 import { SelectionService } from '../editor/selection.service';
 import { UndoRedoService } from '../editor/undo-redo.service';
-import { vi, beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 
 // TODO Phase 1: add canvas-level integration tests once fabric-renderer is extracted.
 // For now, doc-level tests are the safety net.
 
 describe('Canvas ↔ Doc round-trip', () => {
-  let service: EditorCanvasService;
   let doc: LabelDocumentService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        EditorCanvasService,
         LabelDocumentService,
         FabricRenderer,
         SelectionService,
         UndoRedoService,
       ],
     });
-    service = TestBed.inject(EditorCanvasService);
     doc = TestBed.inject(LabelDocumentService);
   });
 
   it('placeholder — full suite below', () => {
-    expect(service).toBeTruthy();
     expect(doc).toBeTruthy();
   });
 

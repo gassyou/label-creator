@@ -2,7 +2,7 @@
   <app-editor-topbar
     [hasSelection]="hasSelection()"
     [hasMultiSelection]="hasMultiSelection()"
-    [zoom]="canvasService.zoom()"
+    [zoom]="zoom()"
     [templateName]="templateName()"
     [isDirty]="isDirty()"
     (saveRequested)="saveToTemplate()"
@@ -25,6 +25,8 @@
     (distributeVRequested)="distributeObjects('vertical')"
     (templateNameChanged)="updateTemplateName($event)"
     (printSettingRequested)="openPrintSettingDialog()"
+    (undoRequested)="undo()"
+    (redoRequested)="redo()"
   />
 
   <div class="workspace">

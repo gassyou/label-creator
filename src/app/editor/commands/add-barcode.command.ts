@@ -1,6 +1,6 @@
 // src/app/editor/commands/add-barcode.command.ts
 import type { EditorCommand } from './editor-command';
-import type { EditorCanvasService } from '../editor-canvas.service';
+import type { EditorCommandContext } from '../editor/editor-command-context';
 import { BarcodeElement, type BarcodeFormat } from '../models/barcode-element';
 import type { LabelElement } from '../models/editor.models';
 
@@ -13,7 +13,7 @@ export class AddBarcodeCommand implements EditorCommand {
     private readonly bindingValue?: string
   ) {}
 
-  async execute(ctx: EditorCanvasService): Promise<void> {
+  async execute(ctx: EditorCommandContext): Promise<void> {
     if (!ctx.canvas) throw new Error('Canvas not initialized');
 
     this.element = new BarcodeElement({
@@ -27,10 +27,11 @@ export class AddBarcodeCommand implements EditorCommand {
     });
 
     const obj = await this.element.render(ctx.getRenderContext());
-    ctx.doc.addElement(this.element as LabelElement);
-    ctx.canvas.add(obj);
+    ctx.addElement(this.element as LabelElement);
+    ctx.canvasAdd(obj);
     ctx.selectItemAfterAdded(obj);
+    ctx.touchRevision();
   }
 
-  undo(_ctx: EditorCanvasService): void { this.element = null; }
+  undo(_ctx: EditorCommandContext): void { this.element = null; }
 }

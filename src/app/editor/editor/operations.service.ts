@@ -4,8 +4,7 @@
  * Owns the geometric / structural operations the editor exposes to the user:
  *  - Element creation commands (`addText`, `addShape`, `addQRCode`, `addBarcode`,
  *    `addImage`) — each method instantiates the corresponding `*Command` and
- *    dispatches it through `EditorCanvasService.execute()` so the standard
- *    undo/redo bookkeeping happens.
+ *    dispatches it through `UndoRedoService.execute(ctx)`.
  *  - Structural ops on the current selection (`deleteSelected`, `clearCanvas`,
  *    `cloneSelected`, `copySelected`, `pasteClipboard`).
  *  - Multi-selection alignment (`alignLeft`, `alignCenter`, `alignRight`,
@@ -13,21 +12,21 @@
  *    `distributeSelectedObjects`).
  *  - Z-order ops (`bringSelectionToFront`, `sendSelectionToBack`).
  *
+ * Also builds the {@link EditorCommandContext} used by every EditorCommand.
+ * The context is a narrow, read-only view over the underlying services —
+ * commands depend on it instead of the legacy `EditorCanvasService`
+ * facade (which has been removed).
+ *
  * Does NOT own:
  *  - Selection state: that's `SelectionService`.
  *  - Canvas lifecycle / doc → fabric reconciliation: that's `FabricRenderer`.
- *  - Snapshot stack / undo redo: lives on `EditorCanvasService` (which
- *    forwards to `UndoRedoService`).
- *
- * Commands are dispatched through `EditorCanvasService.execute(cmd)` so the
- * undo/redo machinery (pushUndoSnapshot, redoStack clearing, error rollback)
- * stays in one place. This service is a thin orchestrator.
+ *  - Snapshot stack / undo redo: lives on `UndoRedoService`.
  */
 import { Injectable, inject } from '@angular/core';
 import { ActiveSelection } from 'fabric';
-import { EditorCanvasService } from '../editor-canvas.service';
 import { FabricRenderer } from '../render/fabric-renderer';
 import { LabelDocumentService } from '../document/label-document.service';
+import { SelectionService } from './selection.service';
 import { UndoRedoService } from './undo-redo.service';
 import { AddTextCommand } from '../commands/add-text.command';
 import { AddShapeCommand } from '../commands/add-shape.command';
@@ -41,15 +40,38 @@ import type {
   QRCodeElement,
   BarcodeElement,
   ImageElement,
+  LabelElement,
 } from '../models/editor.models';
 import type { BaseElement } from '../models/element-base';
+import type { EditorCommandContext } from './editor-command-context';
 
 @Injectable()
 export class OperationsService {
-  private readonly editorCanvasService = inject(EditorCanvasService);
   private readonly renderer = inject(FabricRenderer);
   private readonly doc = inject(LabelDocumentService);
+  private readonly selection = inject(SelectionService);
   private readonly undoRedo = inject(UndoRedoService);
+
+  /**
+   * Builds the {@link EditorCommandContext} commands operate on. Built
+   * fresh per command (cheap) so it always reflects the current
+   * canvas / doc state.
+   */
+  private buildContext(): EditorCommandContext {
+    return {
+      canvas: this.renderer.getCanvas(),
+      getObjectId: (obj) => this.renderer.getObjectId(obj as never),
+      randomId: () => this.renderer.randomId(),
+      getRenderContext: () => this.renderer.getRenderContext(),
+      addElement: (el: LabelElement) => this.doc.addElement(el),
+      canvasAdd: (obj) => this.renderer.getCanvas()?.add(obj as never),
+      selectItemAfterAdded: (obj) => this.selectItemAfterAdded(obj),
+      clearActiveSelection: () => this.clearActiveSelection(),
+      removeElementById: (id) => this.doc.removeElement(id),
+      clearAllElements: () => this.clearAllElements(),
+      touchRevision: () => this.renderer.touchRevision(),
+    };
+  }
 
   // ============================================================
   // Element Creation Commands
@@ -57,7 +79,7 @@ export class OperationsService {
 
   async addText(content: string): Promise<TextElement> {
     const cmd = new AddTextCommand(content);
-    await this.editorCanvasService.execute(cmd);
+    await this.undoRedo.execute(cmd, this.buildContext());
     return cmd.element!;
   }
 
@@ -65,13 +87,13 @@ export class OperationsService {
     shapeType: 'square' | 'triangle' | 'circle' | 'line',
   ): Promise<BaseElement> {
     const cmd = new AddShapeCommand(shapeType);
-    await this.editorCanvasService.execute(cmd);
+    await this.undoRedo.execute(cmd, this.buildContext());
     return cmd.element!;
   }
 
   async addQRCode(bindingValue?: string): Promise<QRCodeElement> {
     const cmd = new AddQRCodeCommand(bindingValue);
-    await this.editorCanvasService.execute(cmd);
+    await this.undoRedo.execute(cmd, this.buildContext());
     return cmd.element!;
   }
 
@@ -80,14 +102,14 @@ export class OperationsService {
     bindingValue?: string,
   ): Promise<BarcodeElement> {
     const cmd = new AddBarcodeCommand(format, bindingValue);
-    await this.editorCanvasService.execute(cmd);
+    await this.undoRedo.execute(cmd, this.buildContext());
     return cmd.element!;
   }
 
   async addImage(url: string): Promise<ImageElement | null> {
     if (!url) return null;
     const cmd = new AddImageCommand(url);
-    await this.editorCanvasService.execute(cmd);
+    await this.undoRedo.execute(cmd, this.buildContext());
     return cmd.element!;
   }
 
@@ -96,11 +118,11 @@ export class OperationsService {
   // ============================================================
 
   async deleteSelected(): Promise<void> {
-    await this.editorCanvasService.execute(new DeleteSelectedCommand());
+    await this.undoRedo.execute(new DeleteSelectedCommand(), this.buildContext());
   }
 
   async clearCanvas(): Promise<void> {
-    await this.editorCanvasService.execute(new ClearCanvasCommand());
+    await this.undoRedo.execute(new ClearCanvasCommand(), this.buildContext());
   }
 
   /** In-memory clipboard for copy/paste. */
@@ -124,9 +146,7 @@ export class OperationsService {
       });
       this.renderer.extend(clone as any, this.renderer.randomId());
       canvas.add(clone);
-      // Use the facade's selectItemAfterAdded so commands and selection
-      // bookkeeping keep going through the same surface.
-      this.editorCanvasService.selectItemAfterAdded(clone as any);
+      this.selectItemAfterAdded(clone as any);
     });
   }
 
@@ -178,7 +198,7 @@ export class OperationsService {
       canvas.setActiveObject(selection);
     }
     canvas.requestRenderAll();
-    this.editorCanvasService.touchRevision();
+    this.renderer.touchRevision();
   }
 
   // ============================================================
@@ -328,7 +348,7 @@ export class OperationsService {
     // Update coordinates and render
     objects.forEach((obj) => obj.setCoords());
     canvas.requestRenderAll();
-    this.editorCanvasService.touchRevision();
+    this.renderer.touchRevision();
   }
 
   distributeSelectedObjects(direction: 'horizontal' | 'vertical'): void {
@@ -420,7 +440,7 @@ export class OperationsService {
     }
 
     canvas.requestRenderAll();
-    this.editorCanvasService.touchRevision();
+    this.renderer.touchRevision();
   }
 
   // ============================================================
@@ -447,5 +467,46 @@ export class OperationsService {
 
     activeObjects.forEach((object) => canvas.sendObjectToBack(object));
     canvas.requestRenderAll();
+  }
+
+  // ============================================================
+  // Context helpers used by EditorCommandContext
+  // ============================================================
+
+  /**
+   * Selects the freshly added object on the Fabric canvas and pushes the
+   * selection into the editor-layer signals via {@link SelectionService}.
+   * Replaces the legacy `EditorCanvasService.selectItemAfterAdded`.
+   */
+  selectItemAfterAdded(obj: unknown): void {
+    const canvas = this.renderer.getCanvas();
+    if (!canvas) return;
+    canvas.discardActiveObject();
+    canvas.setActiveObject(obj as never);
+    canvas.requestRenderAll();
+    this.selection.handleFabricSelection(obj);
+  }
+
+  /**
+   * Clears the active selection on the Fabric canvas and pushes the
+   * null selection into the editor-layer signals via {@link SelectionService}.
+   * Replaces the legacy `EditorCanvasService.clearSelection` /
+   * `handleSelection(null)` chain.
+   */
+  clearActiveSelection(): void {
+    const canvas = this.renderer.getCanvas();
+    if (!canvas) return;
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+    this.selection.handleFabricSelection(null);
+  }
+
+  /**
+   * Wipes the central document's element registry. Used by the
+   * ClearCanvasCommand. Mirrors the legacy
+   * `EditorCanvasService.clearCanvasInternal` body.
+   */
+  private clearAllElements(): void {
+    this.doc.setElements(new Map());
   }
 }

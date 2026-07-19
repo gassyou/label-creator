@@ -16,7 +16,6 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NzMessageService } from 'ng-zorro-antd/message';
-import { EditorCanvasService } from './editor-canvas.service';
 import { EditorTool } from './models/editor.models';
 import { PropertiesPanelComponent } from './properties/properties-panel.component';
 import { EditorTopbarComponent } from './editor-topbar';
@@ -49,7 +48,7 @@ import { LabelConverter } from './persistence/label-converter';
     EditorToolStripComponent,
     PrintSettingDialogComponent,
   ],
-  providers: [EditorCanvasService, LabelDocumentService, OperationsService, SelectionService, UndoRedoService, FabricRenderer],
+  providers: [LabelDocumentService, OperationsService, SelectionService, UndoRedoService, FabricRenderer],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
@@ -57,13 +56,20 @@ import { LabelConverter } from './persistence/label-converter';
 export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('htmlCanvas', { static: true }) htmlCanvas!: ElementRef<HTMLCanvasElement>;
 
-  /** Facade still needed for: state signals (`revision`, `zoom`), the
-   *  Add*Command ctx surface (`canvas`, `randomId`, `getRenderContext`,
-   *  `selectItemAfterAdded`, `setSelection*`), and the JSON preview's
-   *  `toCanvasJson()` accessor. EditorComponent does NOT route undo/redo,
-   *  geometric ops, lifecycle, or zoom through it.
+  /**
+   * Editor-layer dependencies. Injected directly — the legacy
+   * `EditorCanvasService` facade was removed in Phase 10. Each service
+   * owns a single concern:
+   *
+   *   - `FabricRenderer` — Fabric canvas lifecycle, doc → fabric reconcile,
+   *     revision signal, JSON projection.
+   *   - `OperationsService` — element creation / deletion / alignment /
+   *     z-order / clipboard. Builds the `EditorCommandContext` for each
+   *     command.
+   *   - `SelectionService` — Fabric-event → selection-state signals.
+   *   - `UndoRedoService` — snapshot stacks + the command-execution
+   *     wrapper.
    */
-  readonly canvasService = inject(EditorCanvasService);
   private readonly operations = inject(OperationsService);
   private readonly selection = inject(SelectionService);
   private readonly undoRedo = inject(UndoRedoService);
@@ -125,7 +131,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      const revision = this.canvasService.revision();
+      const revision = this.renderer.revision();
       if (!this.hasCanvasInitialized) {
         return;
       }
@@ -153,7 +159,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       console.warn('[Editor] Print fonts failed to load, falling back to system fonts:', err);
     });
 
-    this.canvasService.initialize(this.htmlCanvas.nativeElement, this.canvasState());
+    this.initializeCanvas(this.htmlCanvas.nativeElement, this.canvasState());
     this.hasCanvasInitialized = true;
 
     // [DEBUG] 注册调试入口到 window，方便控制台调用
@@ -167,7 +173,157 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.canvasService.destroy();
+    this.destroyCanvas();
+  }
+
+  /**
+   * Builds the Fabric canvas, wires editor-layer Fabric events, and
+   * hands the canvas to the UndoRedoService. Replaces the legacy
+   * `EditorCanvasService.initialize()`.
+   */
+  private initializeCanvas(
+    element: HTMLCanvasElement,
+    canvasState: {
+      width: number;
+      height: number;
+      backgroundColor: string;
+      backgroundImage?: string;
+    },
+  ): void {
+    this.renderer.initialize(element, canvasState, {
+      onSelectionCreated: (obj) => this.selection.handleFabricSelection(obj),
+      onSelectionUpdated: (obj) => this.selection.handleFabricSelection(obj),
+      onSelectionCleared: () => this.selection.handleFabricSelection(null),
+      onObjectAdded: () => this.renderer.touchRevision(),
+      onObjectModified: (obj) => this.selection.handleFabricModification(obj),
+      onObjectRemoved: () => this.renderer.touchRevision(),
+      onTextChanged: (obj) => this.selection.handleFabricSelection(obj),
+    });
+    this.undoRedo.setCanvas(this.renderer.getCanvas());
+  }
+
+  /**
+   * Tears down the Fabric canvas and clears the editor-layer state.
+   * Replaces the legacy `EditorCanvasService.destroy()`.
+   */
+  private destroyCanvas(): void {
+    this.undoRedo.reset();
+    this.undoRedo.setCanvas(null);
+    this.renderer.dispose();
+    this.doc.setElements(new Map());
+    this.selection.handleFabricSelection(null);
+  }
+
+  /**
+   * Loads a saved LabelDocument into the editor. Wipes the canvas,
+   * rehydrates dimensions, applies the background image / color, and
+   * restores the Fabric JSON (rebuilding the central document alongside).
+   * Replaces the legacy `EditorCanvasService.loadPage()`.
+   */
+  private async loadPage(label: Label): Promise<void> {
+    const canvas = this.renderer.getCanvas();
+    if (!canvas) return;
+
+    const widthPx = millimetersToPixels(label.width);
+    const heightPx = millimetersToPixels(label.height);
+
+    this.renderer.setHydrating(true);
+    canvas.clear();
+    this.doc.setElements(new Map());
+    canvas.setDimensions({ width: widthPx, height: heightPx });
+
+    if (label.backgroundImage) {
+      await this.applyBackgroundImage(label.backgroundImage);
+    } else {
+      canvas.backgroundColor = label.backgroundColor;
+    }
+
+    if (label.canvasJson) {
+      await canvas.loadFromJSON(label.canvasJson);
+      let index = 0;
+      canvas.forEachObject((object) => {
+        const existingId = this.renderer.getObjectId(object);
+        const id = existingId || `loaded-${Date.now()}-${index++}`;
+        const elementType = (object as any).elementType;
+        if (elementType === 'qrcode' || elementType === 'barcode') {
+          this.renderer.extendWithCustomProperties(object, {
+            elementType,
+            bindingValue: (object as any).bindingValue ?? '',
+            foregroundColor: (object as any).foregroundColor ?? '#000000',
+            backgroundColor: (object as any).backgroundColor ?? '#ffffff',
+            errorCorrectionLevel: (object as any).errorCorrectionLevel ?? 'M',
+            barcodeFormat: (object as any).barcodeFormat ?? 'CODE128',
+            showText: (object as any).showText ?? true,
+          });
+        }
+        if (!existingId) {
+          this.renderer.extend(object, id);
+        } else {
+          const originalToObject = object.toObject;
+          object.toObject = () => ({
+            ...originalToObject.call(object),
+            id,
+          });
+        }
+      });
+    }
+
+    canvas.discardActiveObject();
+    this.selection.handleFabricSelection(null);
+    this.renderer.setHydrating(false);
+    this.renderer.touchRevision();
+    canvas.requestRenderAll();
+  }
+
+  /** Applies a background image (data URL) to the Fabric canvas. */
+  private async applyBackgroundImage(backgroundImage: string): Promise<void> {
+    const canvas = this.renderer.getCanvas();
+    if (!canvas || !backgroundImage) return;
+    const { FabricImage, Pattern } = await import('fabric');
+    const image = await FabricImage.fromURL(backgroundImage);
+    const pattern = new Pattern({ source: image.getElement(), repeat: 'repeat' });
+    canvas.backgroundColor = pattern;
+    canvas.requestRenderAll();
+  }
+
+  /** Returns the Fabric canvas's JSON projection as a string for saving.
+   *  Replaces the legacy `EditorCanvasService.serializeCanvas()`. */
+  private serializeCanvas(): string {
+    const json = this.renderer.toCanvasJson();
+    if (!json) return '';
+    // Normalize font-family on text objects before serialization so
+    // PDF rendering doesn't fall back to the wrong font.
+    this.normalizeTextStylesFontFamily();
+    return JSON.stringify(json);
+  }
+
+  /**
+   * Pre-save normalization: force every text-object styles entry's
+   * `fontFamily` to the object's outer `fontFamily` so stale per-char
+   * fonts (e.g. Arial) don't override the design's chosen font.
+   */
+  private normalizeTextStylesFontFamily(): void {
+    const canvas = this.renderer.getCanvas();
+    if (!canvas) return;
+    for (const obj of canvas.getObjects() as any[]) {
+      if (!obj || (obj.type !== 'text' && obj.type !== 'i-text' && obj.type !== 'textbox')) {
+        continue;
+      }
+      const outerFont = obj.fontFamily as string | undefined;
+      if (!outerFont) continue;
+      if (typeof obj.setSelectionStyles === 'function') {
+        const text = (obj.text ?? '') as string;
+        if (text.length === 0) continue;
+        const styles = obj.styles as Array<{ style?: Record<string, unknown> }> | undefined;
+        if (!Array.isArray(styles) || styles.length === 0) continue;
+        const hasInconsistent = styles.some(
+          (r) => r?.style && r.style['fontFamily'] && r.style['fontFamily'] !== outerFont,
+        );
+        if (hasInconsistent) {
+          obj.setSelectionStyles({ fontFamily: outerFont }, 0, text.length);
+        }
+      }
+    }
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -261,6 +417,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.operations.distributeSelectedObjects(direction);
   }
 
+  undo(): void {
+    void this.undoRedo.undo();
+  }
+
+  redo(): void {
+    void this.undoRedo.redo();
+  }
+
   hasMultiSelection(): boolean {
     return this.selection.hasMultiSelection();
   }
@@ -321,7 +485,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         };
         this.template.set({ ...labelTemplate, printSetting });
         if (labelTemplate.label?.canvasJson) {
-          await this.canvasService.loadPage(labelTemplate.label);
+          await this.loadPage(labelTemplate.label);
         }
       },
       error: () => this.message.error('加载模板失败'),
@@ -388,7 +552,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     // The conversion lives in `LabelConverter` (persistence layer).
     return LabelConverter.buildLabelTemplate(
       this.doc.page(),
-      this.canvasService.serializeCanvas(),
+      this.serializeCanvas(),
       this.templateId,
       this.templateName(),
       this.template().printSetting,
@@ -414,7 +578,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       };
       this.template.set({ ...labelTemplate, printSetting });
       if (labelTemplate.label.canvasJson) {
-        await this.canvasService.loadPage(labelTemplate.label);
+        await this.loadPage(labelTemplate.label);
       }
     } catch (e) {
       console.error('Failed to load canvas from JSON:', e);
@@ -436,28 +600,29 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   zoomIn(): void {
-    const newZoom = Math.min(this.canvasService.zoom() + 0.1, 3);
-    this.canvasService.zoom.set(newZoom);
-    const element = this.renderer.getCanvasElement();
-    if (element) {
-      element.style.setProperty('--canvas-zoom', String(newZoom));
-    }
-    this.renderer.getCanvas()?.requestRenderAll();
+    const newZoom = Math.min(this.zoom() + 0.1, 3);
+    this.setZoom(newZoom);
   }
 
   zoomOut(): void {
-    const newZoom = Math.max(this.canvasService.zoom() - 0.1, 0.3);
-    this.canvasService.zoom.set(newZoom);
+    const newZoom = Math.max(this.zoom() - 0.1, 0.3);
+    this.setZoom(newZoom);
+  }
+
+  /** Current zoom factor (1 = 100%). */
+  readonly zoom = signal(1);
+
+  private setZoom(scale: number): void {
+    this.zoom.set(scale);
     const element = this.renderer.getCanvasElement();
     if (element) {
-      element.style.setProperty('--canvas-zoom', String(newZoom));
+      element.style.setProperty('--canvas-zoom', String(scale));
     }
     this.renderer.getCanvas()?.requestRenderAll();
   }
 
   /** True if a text object is currently in Fabric's edit mode. Used by the
-   *  Ctrl+V keyboard handler to let Fabric handle paste inside text boxes.
-   */
+   *  Ctrl+V keyboard handler to let Fabric handle paste inside text boxes. */
   private isEditingText(): boolean {
     const activeObject = this.renderer.getCanvas()?.getActiveObject();
     if (!activeObject) return false;

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { EditorCanvasService } from '../editor-canvas.service';
+import { FabricRenderer } from '../render/fabric-renderer';
 import { LabelDocumentService } from '../document';
 
 /**
@@ -9,9 +9,9 @@ import { LabelDocumentService } from '../document';
  *  - the canvas revision signal (re-renders on any canvas-only change,
  *    e.g. async image render completion that doesn't go through the document).
  *
- * Source of truth for serializable shape is `canvas.toCanvasJson()` — the
- * Fabric `toJSON()` projection — so what the user sees matches what's saved
- * to `Label.canvasJson`.
+ * Source of truth for serializable shape is `FabricRenderer.toCanvasJson()`
+ * — the Fabric `toJSON()` projection — so what the user sees matches
+ * what's saved to `Label.canvasJson`.
  */
 @Component({
   selector: 'app-json-preview',
@@ -23,13 +23,13 @@ import { LabelDocumentService } from '../document';
 })
 export class JsonPreviewComponent {
   private doc = inject(LabelDocumentService);
-  private canvas = inject(EditorCanvasService);
+  private renderer = inject(FabricRenderer);
 
   protected readonly preview = computed(() => {
     // Subscribe to revision so async-only canvas updates also refresh us.
-    this.canvas.revision();
+    this.renderer.revision();
 
-    const full = this.canvas.toCanvasJson() ?? {};
+    const full = this.renderer.toCanvasJson() ?? {};
     const id = this.doc.selectionId();
     if (!id) {
       return JSON.stringify(full, null, 2);

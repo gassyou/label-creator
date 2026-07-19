@@ -3,9 +3,9 @@
  *
  * Owns the snapshot stacks and the command execution wrapper that powers
  * editor undo/redo. Previously lived as private state and methods on
- * `EditorCanvasService`; this extraction keeps `EditorCanvasService`
- * purely as the central facade (canvas instance + selection-signal-proxy
- * + alignment + clipboard + zoom + state signals).
+ * `EditorCanvasService`; that facade has now been removed and the
+ * editor-layer (OperationsService) builds an `EditorCommandContext`
+ * directly and passes it into `execute`.
  *
  * The service is intentionally narrow: a stack of atomic {@link EditorSnapshot}s,
  * the push/redo wrapper, and the apply-snapshot machinery that keeps the
@@ -18,17 +18,14 @@
  *   `'idle'` BEFORE any user-observable side effects.
  *
  * Public surface:
- *   - `setCanvasService(factory)`: wires in the `EditorCanvasService`
- *     factory so commands receive the facade as their `ctx`. Set once at
- *     construction of the facade; the factory avoids a circular DI between
- *     `EditorCanvasService ↔ UndoRedoService`.
- *   - `execute(cmd, onError?)`: pushes a snapshot, clears redo, runs the
- *     command, updates the can-undo/can-redo signals. Pops the snapshot
- *     and re-throws if the command fails.
+ *   - `execute(cmd, ctx, onError?)`: pushes a snapshot, clears redo, runs
+ *     the command with the supplied context, updates the can-undo /
+ *     can-redo signals. Pops the snapshot and re-throws if the command
+ *     fails.
  *   - `undo()` / `redo()`: full snapshot restore with cycle guard.
- *   - `canUndo` / `canRedo` signals consumed by topbar UI (and proxied
- *     through `EditorCanvasService.canUndoSignal` / `canRedoSignal`).
+ *   - `canUndo` / `canRedo` signals consumed by topbar UI.
  *   - `reset()` clears both stacks (used on canvas re-init).
+ *   - `pushSnapshotSync()` for non-command mutations (paste/clipboard).
  */
 import { Injectable, inject, signal } from '@angular/core';
 import type { Canvas } from 'fabric';
@@ -37,7 +34,7 @@ import { ElementFactory } from '../models/element-factory';
 import { type LabelElement } from '../models/editor.models';
 import { FabricRenderer } from '../render/fabric-renderer';
 import type { EditorCommand } from '../commands/editor-command';
-import type { EditorCanvasService } from '../editor-canvas.service';
+import type { EditorCommandContext } from './editor-command-context';
 
 /**
  * A single undo/redo snapshot. Bundles the Fabric canvas JSON with an
@@ -65,29 +62,12 @@ export class UndoRedoService {
   private redoStack: EditorSnapshot[] = [];
   private maxUndoLevels = 50;
 
-  /** Canvas instance; null until `EditorCanvasService.initialize()`. */
+  /** Canvas instance; null until the editor initializes Fabric. */
   private canvas: Canvas | null = null;
 
   /**
-   * Back-reference factory to the central facade. Commands receive this
-   * as their `ctx` so all command handlers continue to operate on the
-   * full `EditorCanvasService` surface. The factory (not a direct
-   * reference) breaks the circular DI: this service is created first,
-   * then the facade sets this factory in its constructor.
-   */
-  private ctxProvider: (() => EditorCanvasService) | null = null;
-
-  /**
-   * Wires in the facade factory. Called once from
-   * `EditorCanvasService`'s constructor.
-   */
-  setCanvasServiceFactory(factory: () => EditorCanvasService): void {
-    this.ctxProvider = factory;
-  }
-
-  /**
-   * Tracks the current Fabric canvas. Called from
-   * `EditorCanvasService.initialize()` and `destroy()`.
+   * Tracks the current Fabric canvas. Called from the editor's
+   * `ngAfterViewInit` (after `FabricRenderer.initialize`) and `ngOnDestroy`.
    */
   setCanvas(canvas: Canvas | null): void {
     this.canvas = canvas;
@@ -103,7 +83,7 @@ export class UndoRedoService {
    *   1. Push a snapshot of the current canvas + doc state onto `undoStack`.
    *   2. Clear the redo stack (any prior redo branch is invalidated by a
    *      new edit, per classic undo/redo semantics).
-   *   3. Run `cmd.execute(canvasService)`.
+   *   3. Run `cmd.execute(ctx)`.
    *   4. On success, update `canUndo` / `canRedo`.
    *   5. On failure, pop the snapshot (so the failed command doesn't add
    *      a phantom undoable entry) and re-throw to the caller.
@@ -111,12 +91,16 @@ export class UndoRedoService {
    * `onError` runs before the re-throw so the caller can show a toast or
    * log without losing the original error.
    */
-  execute<T = void>(cmd: EditorCommand, onError?: (err: unknown) => void): Promise<T> {
+  execute<T = void>(
+    cmd: EditorCommand,
+    ctx: EditorCommandContext,
+    onError?: (err: unknown) => void,
+  ): Promise<T> {
     this.pushUndoSnapshot();
     this.redoStack.length = 0;
     this.syncSignals();
     return Promise.resolve()
-      .then(() => cmd.execute(this.ctxProvider!()) as T | Promise<T>)
+      .then(() => cmd.execute(ctx) as T | Promise<T>)
       .then(
         (v) => v as T,
         (err) => {

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { Toolbar, ToolbarWidget, ToolbarWidgetGroup } from '@angular/aria/toolbar';
 import { NzIconModule } from 'ng-zorro-antd/icon';
-import { EditorCanvasService } from './editor-canvas.service';
+import { UndoRedoService } from './editor/undo-redo.service';
 
 @Component({
   selector: 'app-editor-topbar',
@@ -11,9 +11,14 @@ import { EditorCanvasService } from './editor-canvas.service';
   styleUrl: './editor-topbar.scss'
 })
 export class EditorTopbarComponent {
-  protected readonly canvasService = inject(EditorCanvasService);
-  protected readonly canUndo = this.canvasService.canUndoSignal;
-  protected readonly canRedo = this.canvasService.canRedoSignal;
+  /**
+   * Direct dependency on the undo/redo service. The legacy
+   * `EditorCanvasService` facade used to expose `canUndoSignal` /
+   * `canRedoSignal`; we now read the signals straight off the service.
+   */
+  private readonly undoRedo = inject(UndoRedoService);
+  protected readonly canUndo = this.undoRedo.canUndo;
+  protected readonly canRedo = this.undoRedo.canRedo;
 
   readonly hasSelection = input(false);
   readonly hasMultiSelection = input(false);
@@ -41,4 +46,10 @@ export class EditorTopbarComponent {
   readonly distributeHRequested = output<void>();
   readonly distributeVRequested = output<void>();
   readonly templateNameChanged = output<string>();
+
+  /** Undo / redo are now driven from the host component (which owns
+   *  the `UndoRedoService` + keyboard shortcuts) via output events.
+   *  This keeps the topbar a thin presentational shell. */
+  readonly undoRequested = output<void>();
+  readonly redoRequested = output<void>();
 }

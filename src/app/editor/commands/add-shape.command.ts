@@ -1,6 +1,6 @@
 // src/app/editor/commands/add-shape.command.ts
 import type { EditorCommand } from './editor-command';
-import type { EditorCanvasService } from '../editor-canvas.service';
+import type { EditorCommandContext } from '../editor/editor-command-context';
 import { RectElement } from '../models/rect-element';
 import { CircleElement } from '../models/circle-element';
 import { TriangleElement } from '../models/triangle-element';
@@ -16,7 +16,7 @@ export class AddShapeCommand implements EditorCommand {
 
   constructor(private readonly shapeType: ShapeType) {}
 
-  async execute(ctx: EditorCanvasService): Promise<void> {
+  async execute(ctx: EditorCommandContext): Promise<void> {
     if (!ctx.canvas) throw new Error('Canvas not initialized');
     const id = ctx.randomId();
 
@@ -50,10 +50,11 @@ export class AddShapeCommand implements EditorCommand {
     if (!this.element) throw new Error(`Unknown shape type: ${this.shapeType}`);
 
     const obj = await this.element.render(ctx.getRenderContext());
-    ctx.doc.addElement(this.element as LabelElement);
-    ctx.canvas.add(obj);
+    ctx.addElement(this.element as LabelElement);
+    ctx.canvasAdd(obj);
     ctx.selectItemAfterAdded(obj);
+    ctx.touchRevision();
   }
 
-  undo(_ctx: EditorCanvasService): void { this.element = null; }
+  undo(_ctx: EditorCommandContext): void { this.element = null; }
 }

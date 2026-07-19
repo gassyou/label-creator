@@ -56,6 +56,24 @@ export class FabricRenderer {
 
   readonly syncDirection = signal<SyncDirection>('idle');
 
+  /**
+   * Canvas revision counter — bumped by {@link touchRevision} when the
+   * Fabric canvas changes (object added, geometry modified, etc.).
+   * Consumed by the editor template (`isDirty`), the JSON preview, and
+   * the `EditorCommandContext` so the Add, Delete, and Clear commands
+   * can notify downstream signals after they mutate the canvas.
+   *
+   * The legacy EditorCanvasService owned this signal; it now lives here
+   * because the renderer is the natural single source of truth for
+   * "the canvas changed."
+   */
+  readonly revision = signal(0);
+
+  /** While true, calls to {@link touchRevision} are suppressed. Set by
+   *  undo/redo during snapshot restore so the resulting doc → fabric
+   *  reconciliation doesn't bump the dirty marker. */
+  private hydrating = false;
+
   /** Current interaction mode (false = select/edit, true = drawing). */
   private drawingMode = false;
 
@@ -218,6 +236,50 @@ export class FabricRenderer {
 
   getCanvasElement(): HTMLCanvasElement | null {
     return this.canvasElement;
+  }
+
+  /**
+   * Sets the hydrating flag. While true, {@link touchRevision} is
+   * suppressed. Called by UndoRedoService before/after `loadFromJSON`
+   * so snapshot restore doesn't mark the editor dirty.
+   */
+  setHydrating(value: boolean): void {
+    this.hydrating = value;
+  }
+
+  /**
+   * Bumps the revision counter. No-op while {@link hydrating} is true.
+   * Replaces `EditorCanvasService.touchRevision()`.
+   */
+  touchRevision(): void {
+    if (this.hydrating) return;
+    this.revision.update((v) => v + 1);
+  }
+
+  /**
+   * Returns the Fabric canvas's serializable JSON projection (plain
+   * object). Returns null when the canvas is not initialized. Replaces
+   * `EditorCanvasService.toCanvasJson()`.
+   */
+  toCanvasJson(): Record<string, unknown> | null {
+    if (!this.canvas) return null;
+    return this.canvas.toJSON() as unknown as Record<string, unknown>;
+  }
+
+  /**
+   * Selects and activates a Fabric object. Used by element render() and
+   * the clone helper so the user sees immediate selection feedback.
+   * Replaces `EditorCanvasService.selectItemAfterAdded()`. The optional
+   * `onSelected` callback lets the caller drive the editor-layer selection
+   * signals (cleared/created) without the renderer needing to depend on
+   * SelectionService directly.
+   */
+  selectItemAfterAdded(obj: unknown, onSelected?: (obj: unknown) => void): void {
+    if (!this.canvas) return;
+    this.canvas.discardActiveObject();
+    this.canvas.setActiveObject(obj as never);
+    this.canvas.requestRenderAll();
+    if (onSelected) onSelected(obj);
   }
 
   /**
