@@ -35,6 +35,7 @@ import {
 import { webFontLoader } from '../print/generators/web-font-loader';
 import { LabelDocumentService } from './document';
 import { OperationsService } from './editor/operations.service';
+import { LabelConverter } from './persistence/label-converter';
 
 @Component({
   selector: 'app-editor',
@@ -371,20 +372,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     // Page fields come from the live `LabelDocumentService.page()` signal so
     // edits made via PagePropertiesComponent (which writes only to the doc)
     // are reflected on save. `canvasJson` comes from the Fabric canvas.
-    const page = this.doc.page();
-    return {
-      id: this.templateId || undefined,
-      name: this.templateName(),
-      label: {
-        id: `label-${Date.now()}`,
-        width: page.widthMm,
-        height: page.heightMm,
-        backgroundColor: page.backgroundColor ?? '#ffffff',
-        backgroundImage: page.backgroundImage,
-        canvasJson: this.canvasService.serializeCanvas(),
-      },
-      printSetting: this.template().printSetting,
-    };
+    // The conversion lives in `LabelConverter` (persistence layer).
+    return LabelConverter.buildLabelTemplate(
+      this.doc.page(),
+      this.canvasService.serializeCanvas(),
+      this.templateId,
+      this.templateName(),
+      this.template().printSetting,
+    );
   }
 
   saveCanvasToJSON(): void {
