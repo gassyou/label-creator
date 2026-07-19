@@ -17,12 +17,8 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { EditorCanvasService } from './editor-canvas.service';
-import {
-  EditorSelectionState,
-  EditorTool,
-  DEFAULT_SELECTION_STATE
-} from './models/editor.models';
-import { EditorPropertiesPanelComponent } from './editor-properties-panel';
+import { EditorTool } from './models/editor.models';
+import { PropertiesPanelComponent } from './properties/properties-panel.component';
 import { EditorTopbarComponent } from './editor-topbar';
 import { EditorToolStripComponent } from './editor-tool-strip';
 import { PrintSettingDialogComponent } from './dialogs/print-setting-dialog/print-setting-dialog';
@@ -34,7 +30,7 @@ import { LabelDocumentService } from './document';
 
 @Component({
   selector: 'app-editor',
-  imports: [FormsModule, EditorPropertiesPanelComponent, EditorTopbarComponent, EditorToolStripComponent, PrintSettingDialogComponent],
+  imports: [FormsModule, PropertiesPanelComponent, EditorTopbarComponent, EditorToolStripComponent, PrintSettingDialogComponent],
   providers: [EditorCanvasService, LabelDocumentService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
@@ -51,7 +47,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly labelGeneratorService = inject(LabelGeneratorService);
 
   readonly activeTool = signal<EditorTool>('select');
-  readonly selectionState = signal<EditorSelectionState>({ ...DEFAULT_SELECTION_STATE });
   readonly templateName = signal('未命名');
   readonly isDirty = signal(false);
   readonly printSettingVisible = signal(false);
@@ -60,10 +55,9 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private templateId: string | null = null;
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
-  readonly propsPanelVisible = computed(() => !!this.selectionState().id);
-  readonly hasSelection = computed(() => !!this.selectionState().id || this.canvasService.hasMultiSelection());
-  readonly textEditorVisible = this.canvasService.textEditorVisible.asReadonly();
-  readonly figureEditorVisible = this.canvasService.figureEditorVisible.asReadonly();
+  readonly hasSelection = computed(
+    () => this.canvasService.hasSelection() || this.canvasService.hasMultiSelection()
+  );
 
   /** Single-page template signal */
   readonly template = signal<LabelTemplate>({
@@ -96,13 +90,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private hasCanvasInitialized = false;
 
   constructor() {
-    effect(() => {
-      const selected = this.canvasService.selected();
-      this.selectionState.set(
-        selected ? this.canvasService.readSelectionState() : { ...DEFAULT_SELECTION_STATE }
-      );
-    });
-
     effect(() => {
       const revision = this.canvasService.revision();
       if (!this.hasCanvasInitialized) {
@@ -231,176 +218,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  updateCanvasFill(backgroundColor: string): void {
-    this.template.update((t) => ({
-      ...t,
-      label: { ...t.label, backgroundColor }
-    }));
-    this.canvasService.applyCanvasFill(backgroundColor, this.template().label.backgroundImage || '');
-  }
-
-  updateCanvasImage(backgroundImage: string): void {
-    if (backgroundImage) {
-      this.canvasService.compressAndApplyBackgroundImage(backgroundImage, (compressed) => {
-        this.template.update((t) => ({
-          ...t,
-          label: { ...t.label, backgroundImage: compressed }
-        }));
-        this.isDirty.set(true);
-      });
-    } else {
-      this.template.update((t) => ({
-        ...t,
-        label: { ...t.label, backgroundImage: '' }
-      }));
-      this.canvasService.applyCanvasFill(this.canvasState().backgroundColor, '');
-    }
-  }
-
-  updateCanvasSize(pageSizeId: string): void {
-    const preset = PAGE_SIZE_PRESETS.find(p => p.id === pageSizeId);
-    if (!preset) return;
-
-    this.template.update((t) => ({
-      ...t,
-      label: {
-        ...t.label,
-        width: preset.widthMm,
-        height: preset.heightMm
-      }
-    }));
-  }
-
-  updateCanvasDimensions(dimensions: { width: number; height: number }): void {
-    this.template.update((t) => ({
-      ...t,
-      label: {
-        ...t.label,
-        width: dimensions.width,
-        height: dimensions.height
-      }
-    }));
-    this.canvasService.resizeCanvas(dimensions.width, dimensions.height);
-  }
-
-  applyCanvasImage(): void {
-    this.canvasService.applyCanvasImage(this.canvasState().backgroundImage || '', () => {
-      this.isDirty.set(true);
-    });
-  }
-
-  updateSelectionId(id: string): void {
-    this.selectionState.update((state) => ({ ...state, id }));
-    this.canvasService.updateSelectionId(id);
-  }
-
-  updateSelectionOpacity(opacity: number): void {
-    this.selectionState.update((state) => ({ ...state, opacity: Number(opacity) }));
-    this.canvasService.setSelectionOpacity(opacity);
-  }
-
-  updateSelectionWidth(width: number): void {
-    this.selectionState.update((state) => ({ ...state, width: Number(width) }));
-    this.canvasService.setSelectionWidth(width);
-  }
-
-  updateSelectionHeight(height: number): void {
-    this.selectionState.update((state) => ({ ...state, height: Number(height) }));
-    this.canvasService.setSelectionHeight(height);
-  }
-
-  updateSelectionLength(length: number): void {
-    this.selectionState.update((state) => ({ ...state, length: Number(length) }));
-    this.canvasService.setSelectionLength(length);
-  }
-
-  updateSelectionFill(fill: string): void {
-    this.selectionState.update((state) => ({ ...state, fill }));
-    this.canvasService.setSelectionFill(fill);
-  }
-
-  updateSelectionStroke(stroke: string): void {
-    this.selectionState.update((state) => ({ ...state, stroke }));
-    this.canvasService.setSelectionStroke(stroke);
-  }
-
-  updateSelectionStrokeWidth(strokeWidth: number): void {
-    this.selectionState.update((state) => ({ ...state, strokeWidth: Number(strokeWidth) }));
-    this.canvasService.setSelectionStrokeWidth(strokeWidth);
-  }
-
-  updateSelectionColor(color: string): void {
-    this.selectionState.update((state) => ({ ...state, color }));
-    this.canvasService.setSelectionColor(color);
-  }
-
-  updateSelectionText(text: string): void {
-    this.selectionState.update((state) => ({ ...state, text }));
-    // If it's a barcode or QR code, also update the binding value
-
-    if (this.selectionState().type === 'barcode') {
-      this.canvasService.updateBarcodeProperties(
-        this.selectionState().barcodeFormat ?? 'CODE128',
-        this.selectionState().showText ?? true,
-        text
-      );
-    }
-
-    if(this.selectionState().type === 'qrcode') {
-      this.canvasService.updateBarcodeProperties(
-        text
-      );
-    }
-  }
-
-  updateBarcodeFormat(format: string): void {
-    this.selectionState.update((state) => ({ ...state, barcodeFormat: format as any }));
-    this.canvasService.updateBarcodeProperties(
-      format,
-      this.selectionState().showText ?? true,
-      this.selectionState().text ?? ''
-    );
-  }
-
-  updateBarcodeShowText(showText: boolean): void {
-    this.selectionState.update((state) => ({ ...state, showText }));
-    this.canvasService.updateBarcodeProperties(
-      this.selectionState().barcodeFormat ?? 'CODE128',
-      showText,
-      this.selectionState().text ?? ''
-    );
-  }
-
-  updateErrorCorrectionLevel(level: string): void {
-    this.selectionState.update((state) => ({ ...state, errorCorrectionLevel: level as any }));
-    this.canvasService.updateQRCodeProperties(
-      this.selectionState().foregroundColor ?? '#000000',
-      this.selectionState().backgroundColor ?? '#ffffff',
-      level,
-      this.selectionState().text ?? ''
-    );
-  }
-
-  updateForegroundColor(color: string): void {
-    this.selectionState.update((state) => ({ ...state, foregroundColor: color }));
-    this.canvasService.updateQRCodeProperties(
-      color,
-      this.selectionState().backgroundColor ?? '#ffffff',
-      this.selectionState().errorCorrectionLevel ?? 'M',
-      this.selectionState().text ?? ''
-    );
-  }
-
-  updateBackgroundColor(color: string): void {
-    this.selectionState.update((state) => ({ ...state, backgroundColor: color }));
-    this.canvasService.updateQRCodeProperties(
-      this.selectionState().foregroundColor ?? '#000000',
-      color,
-      this.selectionState().errorCorrectionLevel ?? 'M',
-      this.selectionState().text ?? ''
-    );
-  }
-
   alignObjects(direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'): void {
     this.canvasService.alignSelectedObjects(direction);
   }
@@ -413,61 +230,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.canvasService.hasMultiSelection();
   }
 
-  updateSelectionFontFamily(fontFamily: string): void {
-    this.selectionState.update((state) => ({ ...state, fontFamily }));
-    this.canvasService.setSelectionFontFamily(fontFamily);
-  }
-
-  updateSelectionTextAlign(textAlign: string): void {
-    this.selectionState.update((state) => ({ ...state, textAlign }));
-    this.canvasService.setSelectionTextAlign(textAlign);
-  }
-
-  updateSelectionVerticalAlign(verticalAlign: string): void {
-    this.selectionState.update((state) => ({ ...state, originY: verticalAlign }));
-    this.canvasService.setSelectionVerticalTextAlign(verticalAlign);
-  }
-
-  toggleBold(): void {
-    const fontWeight = this.selectionState().fontWeight ? '' : 'bold';
-    this.selectionState.update((state) => ({ ...state, fontWeight }));
-    this.canvasService.setSelectionFontWeight(fontWeight);
-  }
-
-  toggleItalic(): void {
-    const fontStyle = this.selectionState().fontStyle ? '' : 'italic';
-    this.selectionState.update((state) => ({ ...state, fontStyle }));
-    this.canvasService.setSelectionFontStyle(fontStyle);
-  }
-
-  toggleTextDecoration(value: string): void {
-    const current = (this.selectionState().textDecoration || '')
-      .split(' ')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const textDecoration = current.includes(value)
-      ? current.filter((item) => item !== value).join(' ')
-      : [...current, value].join(' ');
-
-    this.selectionState.update((state) => ({ ...state, textDecoration }));
-    this.canvasService.setSelectionTextDecoration(textDecoration);
-  }
-
-  updateSelectionFontSize(fontSize: number): void {
-    this.selectionState.update((state) => ({ ...state, fontSize: Number(fontSize) }));
-    this.canvasService.setSelectionFontSize(fontSize);
-  }
-
-  updateSelectionLineHeight(lineHeight: number): void {
-    this.selectionState.update((state) => ({ ...state, lineHeight: Number(lineHeight) }));
-    this.canvasService.setSelectionLineHeight(lineHeight);
-  }
-
-  updateSelectionCharSpacing(charSpacing: number): void {
-    this.selectionState.update((state) => ({ ...state, charSpacing: Number(charSpacing) }));
-    this.canvasService.setSelectionCharSpacing(charSpacing);
-  }
-
   cloneSelection(): void {
     this.canvasService.cloneSelected();
   }
@@ -478,15 +240,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   sendSelectionToBack(): void {
     this.canvasService.sendSelectionToBack();
-  }
-
-  clearSelection(): void {
-    this.canvasService.clearSelection();
-  }
-
-  removeSelected(): void {
-    void this.canvasService.deleteSelected();
-    this.selectionState.set({ ...DEFAULT_SELECTION_STATE });
   }
 
   /**

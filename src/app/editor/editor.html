@@ -43,39 +43,7 @@
       </div>
     </section>
 
-    <app-editor-properties-panel
-      [canvasState]="canvasState()"
-      [selectionState]="selectionState()"
-      [textEditorVisible]="textEditorVisible()"
-      [figureEditorVisible]="figureEditorVisible()"
-      [propsPanelVisible]="propsPanelVisible()"
-      (canvasFillChanged)="updateCanvasFill($event)"
-      (canvasImageChanged)="updateCanvasImage($event)"
-      (pageSizeChanged)="updateCanvasSize($event)"
-      (canvasSizeChanged)="updateCanvasDimensions($event)"
-      (idChanged)="updateSelectionId($event)"
-      (opacityChanged)="updateSelectionOpacity($event)"
-      (widthChanged)="updateSelectionWidth($event)"
-      (heightChanged)="updateSelectionHeight($event)"
-      (lengthChanged)="updateSelectionLength($event)"
-      (fillChanged)="updateSelectionFill($event)"
-      (strokeChanged)="updateSelectionStroke($event)"
-      (strokeWidthChanged)="updateSelectionStrokeWidth($event)"
-      (fontFamilyChanged)="updateSelectionFontFamily($event)"
-      (boldToggled)="toggleBold()"
-      (italicToggled)="toggleItalic()"
-      (textDecorationToggled)="toggleTextDecoration($event)"
-      (fontSizeChanged)="updateSelectionFontSize($event)"
-      (textChanged)="updateSelectionText($event)"
-      (colorChanged)="updateSelectionColor($event)"
-      (barcodeFormatChanged)="updateBarcodeFormat($event)"
-      (barcodeShowTextChanged)="updateBarcodeShowText($event)"
-      (errorCorrectionLevelChanged)="updateErrorCorrectionLevel($event)"
-      (foregroundColorChanged)="updateForegroundColor($event)"
-      (backgroundColorChanged)="updateBackgroundColor($event)"
-      (textAlignChanged)="updateSelectionTextAlign($event)"
-      (verticalAlignChanged)="updateSelectionVerticalAlign($event)"
-    />
+    <app-properties-panel></app-properties-panel>
 
     @if (printSettingVisible()) {
       <app-print-setting-dialog
