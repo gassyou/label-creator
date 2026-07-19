@@ -9,7 +9,7 @@ import type { ElementType } from './editor.models';
 export interface RenderContext {
   canvas: Canvas;
   extend(obj: any, id: string | number): void;
-  extendWithBarcodeProperties(obj: any, props: Record<string, any>): void;
+  extendWithCustomProperties(obj: any, props: Record<string, any>): void;
   randomId(): string;
 }
 

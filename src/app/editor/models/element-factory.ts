@@ -27,7 +27,7 @@ export const ElementFactory = {
   },
   fromFabricObject(obj: any, id: string): BaseElement {
     // Discriminator hierarchy:
-    //   1. obj.elementType — set by extendWithBarcodeProperties for qrcode/barcode
+    //   1. obj.elementType — set by extendWithCustomProperties for qrcode/barcode
     //      and by image-bearing elements. Wins over Fabric's intrinsic type.
     //   2. obj.type — Fabric's intrinsic primitive name ('i-text', 'textbox',
     //      'rect', 'circle', 'triangle', 'line', 'image'). Used for plain

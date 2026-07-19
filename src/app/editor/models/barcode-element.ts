@@ -54,7 +54,7 @@ export class BarcodeElement extends BaseElement {
     (img as any).bindingValue = this.binding ?? this.value ?? '';
     (img as any).barcodeFormat = this.format;
     (img as any).showText = this.showText ?? true;
-    ctx.extendWithBarcodeProperties(img, {
+    ctx.extendWithCustomProperties(img, {
       elementType: 'barcode',
       bindingValue: (img as any).bindingValue,
       barcodeFormat: (img as any).barcodeFormat,

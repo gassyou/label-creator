@@ -53,7 +53,7 @@ export class QRCodeElement extends BaseElement {
     (img as any).errorCorrectionLevel = this.errorCorrectionLevel ?? 'M';
     (img as any).foregroundColor = this.foregroundColor ?? '#000000';
     (img as any).backgroundColor = this.backgroundColor ?? '#ffffff';
-    ctx.extendWithBarcodeProperties(img, {
+    ctx.extendWithCustomProperties(img, {
       elementType: 'qrcode',
       bindingValue: (img as any).bindingValue,
       errorCorrectionLevel: (img as any).errorCorrectionLevel,

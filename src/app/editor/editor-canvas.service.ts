@@ -228,7 +228,7 @@ export class EditorCanvasService {
     return {
       canvas: this.canvas,
       extend: (obj, id) => this.extend(obj, id),
-      extendWithBarcodeProperties: (obj, props) => this.extendWithBarcodeProperties(obj, props),
+      extendWithCustomProperties: (obj, props) => this.extendWithCustomProperties(obj, props),
       randomId: () => this.randomId(),
     };
   }
@@ -638,7 +638,7 @@ export class EditorCanvasService {
         // Re-apply barcode/qrcode properties FIRST (before id extension, as it overwrites toObject)
         const elementType = (object as any).elementType;
         if (elementType === 'qrcode' || elementType === 'barcode') {
-          this.extendWithBarcodeProperties(object, {
+          this.extendWithCustomProperties(object, {
             elementType,
             bindingValue: (object as any).bindingValue ?? '',
             foregroundColor: (object as any).foregroundColor ?? '#000000',
@@ -1491,11 +1491,12 @@ export class EditorCanvasService {
   }
 
   /**
-   * Attaches barcode/qrcode-specific properties to a Fabric object and extends
+   * Attaches custom business properties to a Fabric object and extends
    * its toObject so the custom fields survive serialization. Called by element
-   * render() methods via the RenderContext.
+   * render() methods via the RenderContext. Used for barcode/qrcode elements
+   * and any other element that carries business-specific custom fields.
    */
-  protected extendWithBarcodeProperties(obj: any, props: Record<string, any>): void {
+  protected extendWithCustomProperties(obj: any, props: Record<string, any>): void {
     // Assign properties directly to the object
     Object.assign(obj, props);
 
