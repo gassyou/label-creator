@@ -3,10 +3,7 @@
 @if (s) {
   <label>
     <span>Barcode Format</span>
-    <select
-      [ngModel]="$any(s).barcodeFormat"
-      (ngModelChange)="onFormatChange($event)"
-    >
+    <select [ngModel]="$any(s).barcodeFormat" (ngModelChange)="onFormatChange($event)">
       <option value="CODE128">CODE128</option>
       <option value="EAN13">EAN-13</option>
       <option value="CODE39">CODE39</option>
@@ -14,11 +11,7 @@
   </label>
   <label>
     <span>Value</span>
-    <input
-      type="text"
-      [ngModel]="$any(s).text"
-      (ngModelChange)="onTextChange($event)"
-    />
+    <input type="text" [ngModel]="$any(s).text" (ngModelChange)="onTextChange($event)" />
   </label>
   <label class="checkbox-label">
     <input

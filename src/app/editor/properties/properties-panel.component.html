@@ -13,11 +13,21 @@
       <div class="property-stack">
         <app-common-properties />
         @switch (sel.type) {
-          @case ('text')     { <app-text-properties /> }
-          @case ('barcode')  { <app-barcode-properties /> }
-          @case ('qrcode')   { <app-qrcode-properties /> }
-          @case ('line')     { <app-line-properties /> }
-          @default           { <app-figure-properties /> }
+          @case ('text') {
+            <app-text-properties />
+          }
+          @case ('barcode') {
+            <app-barcode-properties />
+          }
+          @case ('qrcode') {
+            <app-qrcode-properties />
+          }
+          @case ('line') {
+            <app-line-properties />
+          }
+          @default {
+            <app-figure-properties />
+          }
         }
       </div>
     }

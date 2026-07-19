@@ -29,10 +29,7 @@
 
   <div class="workspace">
     <aside class="left-shell">
-      <app-editor-tool-strip
-        [activeTool]="activeTool()"
-        (toolSelected)="activateTool($event)"
-      />
+      <app-editor-tool-strip [activeTool]="activeTool()" (toolSelected)="activateTool($event)" />
     </aside>
 
     <section class="stage-panel">

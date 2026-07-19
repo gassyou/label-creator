@@ -1,6 +1,14 @@
 import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { Canvas, FabricImage, IText, Pattern } from 'fabric';
-import { DEFAULT_SELECTION_STATE, type LabelElement, TextElement, QRCodeElement, BarcodeElement, ImageElement, EditorSelectionState } from './models/editor.models';
+import {
+  DEFAULT_SELECTION_STATE,
+  type LabelElement,
+  TextElement,
+  QRCodeElement,
+  BarcodeElement,
+  ImageElement,
+  EditorSelectionState,
+} from './models/editor.models';
 import { Label, PX_PER_MM, millimetersToPixels } from './models/label.models';
 import { LabelDocumentService, type LabelPageSettings } from './document';
 import { BaseElement, type RenderContext } from './models/element-base';
@@ -13,7 +21,6 @@ import { AddBarcodeCommand } from './commands/add-barcode.command';
 import { AddImageCommand } from './commands/add-image.command';
 import { DeleteSelectedCommand } from './commands/delete-selected.command';
 import { ClearCanvasCommand } from './commands/clear-canvas.command';
-
 
 @Injectable()
 export class EditorCanvasService {
@@ -65,29 +72,45 @@ export class EditorCanvasService {
   private maxUndoLevels = 50;
   private undoInFlight = false;
 
-  initialize(element: HTMLCanvasElement, canvasState: { width: number; height: number; backgroundColor: string; backgroundImage?: string }): void {
+  initialize(
+    element: HTMLCanvasElement,
+    canvasState: {
+      width: number;
+      height: number;
+      backgroundColor: string;
+      backgroundImage?: string;
+    },
+  ): void {
     this.canvas?.dispose();
     this.canvasElement = element;
     this.canvas = new Canvas(element, {
       hoverCursor: 'pointer',
       selection: true,
       selectionBorderColor: '#2563eb',
-      isDrawingMode: false
+      isDrawingMode: false,
     });
 
     this.canvas.setDimensions({
       width: canvasState.width,
-      height: canvasState.height
+      height: canvasState.height,
     });
     this.canvas.backgroundColor = canvasState.backgroundColor;
 
-    this.canvas.on('selection:created', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
-    this.canvas.on('selection:updated', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
+    this.canvas.on('selection:created', () =>
+      this.handleSelection(this.canvas?.getActiveObject() ?? null),
+    );
+    this.canvas.on('selection:updated', () =>
+      this.handleSelection(this.canvas?.getActiveObject() ?? null),
+    );
     this.canvas.on('selection:cleared', () => this.handleSelection(null));
     this.canvas.on('object:added', () => this.touchRevision());
-    this.canvas.on('object:modified', () => this.handleObjectModified(this.canvas?.getActiveObject() ?? null));
+    this.canvas.on('object:modified', () =>
+      this.handleObjectModified(this.canvas?.getActiveObject() ?? null),
+    );
     this.canvas.on('object:removed', () => this.touchRevision());
-    this.canvas.on('text:changed', () => this.handleSelection(this.canvas?.getActiveObject() ?? null));
+    this.canvas.on('text:changed', () =>
+      this.handleSelection(this.canvas?.getActiveObject() ?? null),
+    );
     this.applyInteractionMode();
     this.canvas.requestRenderAll();
   }
@@ -116,7 +139,7 @@ export class EditorCanvasService {
           this.undoStack.pop();
           this.syncUndoSignals();
           throw err;
-        }
+        },
       );
   }
 
@@ -158,8 +181,12 @@ export class EditorCanvasService {
     });
   }
 
-  canUndo(): boolean { return this.undoStack.length > 0; }
-  canRedo(): boolean { return this.redoStack.length > 0; }
+  canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
 
   private pushUndoSnapshot(): void {
     if (!this.canvas) return;
@@ -202,7 +229,7 @@ export class EditorCanvasService {
       canvas: this.canvas,
       extend: (obj, id) => this.extend(obj, id),
       extendWithBarcodeProperties: (obj, props) => this.extendWithBarcodeProperties(obj, props),
-      randomId: () => this.randomId()
+      randomId: () => this.randomId(),
     };
   }
 
@@ -237,7 +264,10 @@ export class EditorCanvasService {
     return cmd.element!;
   }
 
-  async addBarcode(format: BarcodeElement['format'], bindingValue?: string): Promise<BarcodeElement> {
+  async addBarcode(
+    format: BarcodeElement['format'],
+    bindingValue?: string,
+  ): Promise<BarcodeElement> {
     const cmd = new AddBarcodeCommand(format, bindingValue);
     await this.execute(cmd);
     return cmd.element!;
@@ -313,7 +343,7 @@ export class EditorCanvasService {
     activeObject.clone().then((clone) => {
       clone.set({
         left: (clone.left ?? 0) + 20,
-        top: (clone.top ?? 0) + 20
+        top: (clone.top ?? 0) + 20,
       });
       this.extend(clone as any, this.randomId());
       this.canvas?.add(clone);
@@ -328,7 +358,7 @@ export class EditorCanvasService {
     }
 
     this.clipboard = [];
-    Promise.all(activeObjects.map(obj => obj.clone())).then((clones) => {
+    Promise.all(activeObjects.map((obj) => obj.clone())).then((clones) => {
       this.clipboard = clones;
     });
   }
@@ -344,7 +374,7 @@ export class EditorCanvasService {
     this.clipboard.forEach((clone) => {
       clone.set({
         left: (clone.left ?? 0) + 20,
-        top: (clone.top ?? 0) + 20
+        top: (clone.top ?? 0) + 20,
       });
       this.extend(clone, this.randomId());
       this.canvas?.add(clone);
@@ -441,7 +471,7 @@ export class EditorCanvasService {
     FabricImage.fromURL(backgroundImage).then((image) => {
       const pattern = new Pattern({
         source: image.getElement(),
-        repeat: 'repeat'
+        repeat: 'repeat',
       });
 
       this.canvas!.backgroundColor = pattern;
@@ -527,11 +557,12 @@ export class EditorCanvasService {
         if (text.length === 0) continue;
 
         // 只在 styles 中存在与外层不一致的字体时才调 setSelectionStyles
-        const styles = (obj as any).styles as Array<{ style?: Record<string, unknown> }> | undefined;
+        const styles = (obj as any).styles as
+          Array<{ style?: Record<string, unknown> }> | undefined;
         if (!Array.isArray(styles) || styles.length === 0) continue;
 
         const hasInconsistent = styles.some(
-          r => r?.style && r.style['fontFamily'] && r.style['fontFamily'] !== outerFont
+          (r) => r?.style && r.style['fontFamily'] && r.style['fontFamily'] !== outerFont,
         );
         if (hasInconsistent) {
           (obj as any).setSelectionStyles({ fontFamily: outerFont }, 0, text.length);
@@ -555,7 +586,7 @@ export class EditorCanvasService {
       name: 'Template',
       width: this.canvas?.width ?? 0,
       height: this.canvas?.height ?? 0,
-      elements
+      elements,
     };
 
     return JSON.stringify(template, null, 2);
@@ -575,7 +606,7 @@ export class EditorCanvasService {
     this.elementRegistry.clear();
     this.canvas.setDimensions({
       width: widthPx,
-      height: heightPx
+      height: heightPx,
     });
 
     if (label.backgroundImage) {
@@ -603,7 +634,7 @@ export class EditorCanvasService {
             backgroundColor: (object as any).backgroundColor ?? '#ffffff',
             errorCorrectionLevel: (object as any).errorCorrectionLevel ?? 'M',
             barcodeFormat: (object as any).barcodeFormat ?? 'CODE128',
-            showText: (object as any).showText ?? true
+            showText: (object as any).showText ?? true,
           });
         }
 
@@ -615,7 +646,7 @@ export class EditorCanvasService {
           const originalToObject = object.toObject;
           object.toObject = () => ({
             ...originalToObject.call(object),
-            id
+            id,
           });
         }
 
@@ -668,21 +699,25 @@ export class EditorCanvasService {
       return {
         ...DEFAULT_SELECTION_STATE,
         id: 'multi-select',
-        type: undefined
+        type: undefined,
       };
     }
 
     const decorations = [
       object.get('underline') ? 'underline' : '',
       object.get('overline') ? 'overline' : '',
-      object.get('linethrough') ? 'line-through' : ''
+      object.get('linethrough') ? 'line-through' : '',
     ].filter(Boolean);
 
     const objectType = this.getElementType(object);
     const fabricObj = object as any;
-    const effectiveFontSize = objectType === 'text'
-      ? Math.round(((fabricObj as any).fontSize || DEFAULT_SELECTION_STATE.fontSize) * ((fabricObj as any).scaleX || 1))
-      : Number(this.getActiveStyle('fontSize') || DEFAULT_SELECTION_STATE.fontSize);
+    const effectiveFontSize =
+      objectType === 'text'
+        ? Math.round(
+            ((fabricObj as any).fontSize || DEFAULT_SELECTION_STATE.fontSize) *
+              ((fabricObj as any).scaleX || 1),
+          )
+        : Number(this.getActiveStyle('fontSize') || DEFAULT_SELECTION_STATE.fontSize);
     const baseState = {
       id: this.getObjectId(object),
       type: objectType,
@@ -694,7 +729,9 @@ export class EditorCanvasService {
       strokeWidth: Number(object.get('strokeWidth') || 0),
       fontSize: effectiveFontSize,
       lineHeight: Number(this.getActiveStyle('lineHeight') || DEFAULT_SELECTION_STATE.lineHeight),
-      charSpacing: Number(this.getActiveStyle('charSpacing') || DEFAULT_SELECTION_STATE.charSpacing),
+      charSpacing: Number(
+        this.getActiveStyle('charSpacing') || DEFAULT_SELECTION_STATE.charSpacing,
+      ),
       fontWeight: String(this.getActiveStyle('fontWeight') || ''),
       fontStyle: String(this.getActiveProp('fontStyle') || ''),
       textAlign: this.getActiveProp('textAlign') || DEFAULT_SELECTION_STATE.textAlign,
@@ -707,9 +744,11 @@ export class EditorCanvasService {
       case 'line':
         // Calculate line length from points
         const lineObj = object as any;
-        const x1 = lineObj.x1 || 0, y1 = lineObj.y1 || 0;
-        const x2 = lineObj.x2 || 0, y2 = lineObj.y2 || 0;
-        const length = Math.round(Math.sqrt((x2-x1)**2 + (y2-y1)**2));
+        const x1 = lineObj.x1 || 0,
+          y1 = lineObj.y1 || 0;
+        const x2 = lineObj.x2 || 0,
+          y2 = lineObj.y2 || 0;
+        const length = Math.round(Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2));
         return { ...baseState, length };
     }
 
@@ -799,7 +838,7 @@ export class EditorCanvasService {
     const snapshot = object.toObject();
     object.toObject = () => ({
       ...snapshot,
-      id
+      id,
     });
   }
 
@@ -821,7 +860,7 @@ export class EditorCanvasService {
         width: visualWidth,
         height: visualHeight,
         scaleX: 1,
-        scaleY: 1
+        scaleY: 1,
       });
       this.updateElementSize(object, visualWidth, visualHeight);
     } else {
@@ -841,7 +880,7 @@ export class EditorCanvasService {
         width: visualWidth,
         height: visualHeight,
         scaleX: 1,
-        scaleY: 1
+        scaleY: 1,
       });
       this.updateElementSize(object, visualWidth, visualHeight);
     } else {
@@ -868,7 +907,9 @@ export class EditorCanvasService {
     const object = this.canvas?.getActiveObject();
     if (!object || object.type !== 'line') return;
     const lineObj = object as any;
-    const currentLength = Math.sqrt((lineObj.x2 - lineObj.x1) ** 2 + (lineObj.y2 - lineObj.y1) ** 2);
+    const currentLength = Math.sqrt(
+      (lineObj.x2 - lineObj.x1) ** 2 + (lineObj.y2 - lineObj.y1) ** 2,
+    );
     if (currentLength === 0) return;
     const scale = Number(length) / currentLength;
     const dx = (lineObj.x2 - lineObj.x1) * scale;
@@ -974,7 +1015,7 @@ export class EditorCanvasService {
     if (!object) return;
     const element = this.getObjectElement(object) as BarcodeElement | undefined;
     if (element) {
-      if(format) {
+      if (format) {
         element.format = format as BarcodeElement['format'];
       }
       if (showText) {
@@ -986,10 +1027,10 @@ export class EditorCanvasService {
       }
     }
     // Also update the Fabric object properties directly for serialization
-    if(format) {
+    if (format) {
       (object as any).barcodeFormat = format;
     }
-    if(showText) {
+    if (showText) {
       (object as any).showText = showText;
     }
     if (bindingValue) {
@@ -999,7 +1040,12 @@ export class EditorCanvasService {
     this.touchRevision();
   }
 
-  updateQRCodeProperties(foregroundColor: string, backgroundColor: string, errorCorrectionLevel: string, bindingValue?: string): void {
+  updateQRCodeProperties(
+    foregroundColor: string,
+    backgroundColor: string,
+    errorCorrectionLevel: string,
+    bindingValue?: string,
+  ): void {
     const object = this.canvas?.getActiveObject();
     if (!object) return;
     const element = this.getObjectElement(object) as QRCodeElement | undefined;
@@ -1036,29 +1082,37 @@ export class EditorCanvasService {
 
     // Normalize all objects to have originX='left' and originY='top'
     // while preserving their visual position
-    objects.forEach(obj => {
+    objects.forEach((obj) => {
       const currentLeft = obj.left ?? 0;
       const currentTop = obj.top ?? 0;
       const width = (obj.width ?? 0) * (obj.scaleX ?? 1);
       const height = (obj.height ?? 0) * (obj.scaleY ?? 1);
 
       // Calculate visual left/top based on current origin
-      const visualLeft = obj.originX === 'center' ? currentLeft - width / 2 :
-                         obj.originX === 'right' ? currentLeft - width : currentLeft;
-      const visualTop = obj.originY === 'center' ? currentTop - height / 2 :
-                        obj.originY === 'bottom' ? currentTop - height : currentTop;
+      const visualLeft =
+        obj.originX === 'center'
+          ? currentLeft - width / 2
+          : obj.originX === 'right'
+            ? currentLeft - width
+            : currentLeft;
+      const visualTop =
+        obj.originY === 'center'
+          ? currentTop - height / 2
+          : obj.originY === 'bottom'
+            ? currentTop - height
+            : currentTop;
 
       obj.set({
         originX: 'left',
         originY: 'top',
         left: visualLeft,
-        top: visualTop
+        top: visualTop,
       });
       obj.setCoords();
     });
 
     // Calculate actual bounds for each object
-    const objectData = objects.map(obj => {
+    const objectData = objects.map((obj) => {
       const left = obj.left ?? 0;
       const top = obj.top ?? 0;
       const width = (obj.width ?? 0) * (obj.scaleX ?? 1);
@@ -1067,10 +1121,10 @@ export class EditorCanvasService {
     });
 
     // Calculate bounding extremes from selected objects
-    const minLeft = Math.min(...objectData.map(d => d.left));
-    const maxRight = Math.max(...objectData.map(d => d.left + d.width));
-    const minTop = Math.min(...objectData.map(d => d.top));
-    const maxBottom = Math.max(...objectData.map(d => d.top + d.height));
+    const minLeft = Math.min(...objectData.map((d) => d.left));
+    const maxRight = Math.max(...objectData.map((d) => d.left + d.width));
+    const minTop = Math.min(...objectData.map((d) => d.top));
+    const maxBottom = Math.max(...objectData.map((d) => d.top + d.height));
 
     // Calculate target bounds - use canvas/page for alignment reference
     let targetLeft: number, targetRight: number, targetTop: number, targetBottom: number;
@@ -1130,7 +1184,7 @@ export class EditorCanvasService {
     }
 
     // Update coordinates and render
-    objects.forEach(obj => obj.setCoords());
+    objects.forEach((obj) => obj.setCoords());
     this.canvas?.requestRenderAll();
     this.touchRevision();
   }
@@ -1140,7 +1194,7 @@ export class EditorCanvasService {
     if (!objects || objects.length < 3) return;
 
     // Normalize all objects to originX='left' and originY='top' first
-    objects.forEach(obj => {
+    objects.forEach((obj) => {
       const currentLeft = obj.left ?? 0;
       const currentTop = obj.top ?? 0;
       const scaleX = obj.scaleX ?? 1;
@@ -1149,21 +1203,29 @@ export class EditorCanvasService {
       const height = (obj.height ?? 0) * scaleY;
 
       // Calculate visual left/top based on current origin
-      const visualLeft = obj.originX === 'center' ? currentLeft - width / 2 :
-                         obj.originX === 'right' ? currentLeft - width : currentLeft;
-      const visualTop = obj.originY === 'center' ? currentTop - height / 2 :
-                        obj.originY === 'bottom' ? currentTop - height : currentTop;
+      const visualLeft =
+        obj.originX === 'center'
+          ? currentLeft - width / 2
+          : obj.originX === 'right'
+            ? currentLeft - width
+            : currentLeft;
+      const visualTop =
+        obj.originY === 'center'
+          ? currentTop - height / 2
+          : obj.originY === 'bottom'
+            ? currentTop - height
+            : currentTop;
 
       // Set origin to left/top
       obj.set({
         originX: 'left',
-        originY: 'top'
+        originY: 'top',
       });
 
       // Keep the same visual position using calculated visual values
       obj.set({
         left: visualLeft,
-        top: visualTop
+        top: visualTop,
       });
       obj.setCoords();
     });
@@ -1176,31 +1238,29 @@ export class EditorCanvasService {
       width: number;
       height: number;
     }
-    const objectData: ObjData[] = objects.map(obj => ({
+    const objectData: ObjData[] = objects.map((obj) => ({
       obj,
       left: obj.left ?? 0,
       top: obj.top ?? 0,
       width: (obj.width ?? 0) * (obj.scaleX ?? 1),
-      height: (obj.height ?? 0) * (obj.scaleY ?? 1)
+      height: (obj.height ?? 0) * (obj.scaleY ?? 1),
     }));
 
     // Sort objects along the axis
     const sorted = [...objectData].sort((a, b) =>
-      direction === 'horizontal'
-        ? a.left - b.left
-        : a.top - b.top
+      direction === 'horizontal' ? a.left - b.left : a.top - b.top,
     );
 
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
 
     const firstEdge = direction === 'horizontal' ? first.left : first.top;
-    const lastEdge = direction === 'horizontal'
-      ? last.left + last.width
-      : last.top + last.height;
+    const lastEdge = direction === 'horizontal' ? last.left + last.width : last.top + last.height;
     const totalSpace = lastEdge - firstEdge;
-    const totalSize = sorted.reduce((sum, d) =>
-      direction === 'horizontal' ? sum + d.width : sum + d.height, 0);
+    const totalSize = sorted.reduce(
+      (sum, d) => (direction === 'horizontal' ? sum + d.width : sum + d.height),
+      0,
+    );
     const availableSpace = totalSpace - totalSize;
     const gap = availableSpace / (sorted.length - 1);
 
@@ -1269,7 +1329,7 @@ export class EditorCanvasService {
     object.set({
       hasRotatingPoint: true,
       transparentCorners: false,
-      cornerColor: 'rgba(37, 99, 235, 0.7)'
+      cornerColor: 'rgba(37, 99, 235, 0.7)',
     });
 
     if (isMultiSelect) {
@@ -1277,7 +1337,10 @@ export class EditorCanvasService {
       const dummyElement: LabelElement = {
         type: 'rect',
         id: 'multi-select-marker',
-        x: 0, y: 0, width: 0, height: 0
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
       };
       this.selected.set(dummyElement as unknown as BaseElement);
       this.textEditorVisible.set(false);
@@ -1370,7 +1433,7 @@ export class EditorCanvasService {
     this.canvas.forEachObject((object) => {
       object.set({
         selectable: !this.drawingModeEnabled,
-        evented: !this.drawingModeEnabled
+        evented: !this.drawingModeEnabled,
       });
     });
 
@@ -1403,7 +1466,7 @@ export class EditorCanvasService {
     const originalToObject = obj.toObject;
     obj.toObject = ((toObject) => () => ({
       ...toObject.call(obj),
-      id
+      id,
     }))(originalToObject);
   }
 
@@ -1418,7 +1481,7 @@ export class EditorCanvasService {
 
     // Override toObject to include custom properties in serialization
     const originalToObject = obj.toObject;
-    obj.toObject = function(this: any) {
+    obj.toObject = function (this: any) {
       const result = originalToObject.call(this);
       return {
         ...result,
@@ -1428,7 +1491,7 @@ export class EditorCanvasService {
         foregroundColor: this.foregroundColor,
         backgroundColor: this.backgroundColor,
         barcodeFormat: this.barcodeFormat,
-        showText: this.showText
+        showText: this.showText,
       };
     };
   }
@@ -1438,7 +1501,7 @@ export class EditorCanvasService {
    * for barcode/qrcode elements before any binding value is rendered. Exposed
    * via RenderContext so elements can call it during render().
    */
-  protected createPlaceholderDataUrl(text: string, w: number,h:number): string {
+  protected createPlaceholderDataUrl(text: string, w: number, h: number): string {
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -1479,7 +1542,8 @@ export class EditorCanvasService {
     }
 
     if ('getSelectionStyles' in object && object.isEditing) {
-      const selectionStyle = object.getSelectionStyles()[0] as Record<string, T | undefined> | undefined;
+      const selectionStyle = object.getSelectionStyles()[0] as
+        Record<string, T | undefined> | undefined;
       return selectionStyle?.[styleName] || '';
     }
 
@@ -1497,7 +1561,7 @@ export class EditorCanvasService {
         object.setSelectionStyles({
           underline: value.includes('underline'),
           overline: value.includes('overline'),
-          linethrough: value.includes('line-through')
+          linethrough: value.includes('line-through'),
         });
       }
 
@@ -1508,7 +1572,7 @@ export class EditorCanvasService {
         object.set({
           underline: value.includes('underline'),
           overline: value.includes('overline'),
-          linethrough: value.includes('line-through')
+          linethrough: value.includes('line-through'),
         } as never);
       }
 
@@ -1549,7 +1613,7 @@ export class EditorCanvasService {
     const image = await FabricImage.fromURL(backgroundImage);
     const pattern = new Pattern({
       source: image.getElement(),
-      repeat: 'repeat'
+      repeat: 'repeat',
     });
 
     this.canvas.backgroundColor = pattern;
@@ -1604,16 +1668,19 @@ export class EditorCanvasService {
   /**
    * Compress image and apply as background
    */
-  compressAndApplyBackgroundImage(dataUrl: string, onApplied: (compressedDataUrl: string) => void): void {
+  compressAndApplyBackgroundImage(
+    dataUrl: string,
+    onApplied: (compressedDataUrl: string) => void,
+  ): void {
     if (!this.canvas) {
       return;
     }
 
-    this.compressImageDataUrl(dataUrl, 1920).then(compressed => {
+    this.compressImageDataUrl(dataUrl, 1920).then((compressed) => {
       FabricImage.fromURL(compressed).then((image) => {
         const pattern = new Pattern({
           source: image.getElement(),
-          repeat: 'repeat'
+          repeat: 'repeat',
         });
 
         this.canvas!.backgroundColor = pattern;

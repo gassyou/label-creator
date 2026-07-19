@@ -11,7 +11,7 @@ import {
   inject,
   signal,
   untracked,
-  OnInit
+  OnInit,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -24,17 +24,31 @@ import { EditorToolStripComponent } from './editor-tool-strip';
 import { PrintSettingDialogComponent } from './dialogs/print-setting-dialog/print-setting-dialog';
 import { TemplateService } from '../template/template.service';
 import { LabelGeneratorService } from '../print/label-generator.service';
-import { PrintSetting, DEFAULT_PRINT_SETTING, LabelTemplate, Label, millimetersToPixels, PAGE_SIZE_PRESETS, pixelsToMillimeters } from './models/label.models';
+import {
+  PrintSetting,
+  DEFAULT_PRINT_SETTING,
+  LabelTemplate,
+  Label,
+  millimetersToPixels,
+  PAGE_SIZE_PRESETS,
+  pixelsToMillimeters,
+} from './models/label.models';
 import { webFontLoader } from '../print/generators/web-font-loader';
 import { LabelDocumentService } from './document';
 
 @Component({
   selector: 'app-editor',
-  imports: [FormsModule, PropertiesPanelComponent, EditorTopbarComponent, EditorToolStripComponent, PrintSettingDialogComponent],
+  imports: [
+    FormsModule,
+    PropertiesPanelComponent,
+    EditorTopbarComponent,
+    EditorToolStripComponent,
+    PrintSettingDialogComponent,
+  ],
   providers: [EditorCanvasService, LabelDocumentService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
-  styleUrl: './editor.scss'
+  styleUrl: './editor.scss',
 })
 export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('htmlCanvas', { static: true }) htmlCanvas!: ElementRef<HTMLCanvasElement>;
@@ -56,7 +70,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
   readonly hasSelection = computed(
-    () => this.canvasService.hasSelection() || this.canvasService.hasMultiSelection()
+    () => this.canvasService.hasSelection() || this.canvasService.hasMultiSelection(),
   );
 
   /** Single-page template signal */
@@ -68,21 +82,26 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       width: 210,
       height: 297,
       backgroundColor: '#ffffff',
-      canvasJson: ''
+      canvasJson: '',
     },
-    printSetting: { ...DEFAULT_PRINT_SETTING }
+    printSetting: { ...DEFAULT_PRINT_SETTING },
   });
 
   /** Canvas state derived from template (px) - auto-synced with template */
   readonly canvasState = computed(() => {
     const t = this.template();
     // Defensive: handle both old flat structure and new nested structure
-    const label = t?.label ?? { width: 210, height: 297, backgroundColor: '#ffffff', backgroundImage: '' };
+    const label = t?.label ?? {
+      width: 210,
+      height: 297,
+      backgroundColor: '#ffffff',
+      backgroundImage: '',
+    };
     return {
       width: millimetersToPixels(label.width ?? 210),
       height: millimetersToPixels(label.height ?? 297),
       backgroundColor: label.backgroundColor ?? '#ffffff',
-      backgroundImage: label.backgroundImage || ''
+      backgroundImage: label.backgroundImage || '',
     };
   });
 
@@ -249,13 +268,15 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     const labelTemplate = this.buildLabelTemplate();
     const name = this.templateName() || `模板 ${new Date().toLocaleString()}`;
 
-    this.templateService.saveTemplate(name, labelTemplate, undefined, this.templateId ?? undefined).subscribe({
-      next: (template) => {
-        this.isDirty.set(false);
-        this.message.success('保存成功');
-      },
-      error: () => this.message.error('保存失败')
-    });
+    this.templateService
+      .saveTemplate(name, labelTemplate, undefined, this.templateId ?? undefined)
+      .subscribe({
+        next: (template) => {
+          this.isDirty.set(false);
+          this.message.success('保存成功');
+        },
+        error: () => this.message.error('保存失败'),
+      });
   }
 
   /**
@@ -280,14 +301,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         // Ensure printSetting has default values for missing properties
         const printSetting = {
           ...DEFAULT_PRINT_SETTING,
-          ...labelTemplate.printSetting
+          ...labelTemplate.printSetting,
         };
         this.template.set({ ...labelTemplate, printSetting });
         if (labelTemplate.label?.canvasJson) {
           await this.canvasService.loadPage(labelTemplate.label);
         }
       },
-      error: () => this.message.error('加载模板失败')
+      error: () => this.message.error('加载模板失败'),
     });
   }
 
@@ -335,7 +356,9 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        console.log(`[debugDownloadQrImages] 已下载原始 PNG: qr-original-${i + 1}.png（来源：JSON.src，未经任何处理）`);
+        console.log(
+          `[debugDownloadQrImages] 已下载原始 PNG: qr-original-${i + 1}.png（来源：JSON.src，未经任何处理）`,
+        );
       } catch (e) {
         console.error(`[debugDownloadQrImages] 下载 QR #${i + 1} 失败:`, e);
       }
@@ -352,9 +375,9 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         height: Math.round(pixelsToMillimeters(this.canvasState().height)),
         backgroundColor: this.canvasState().backgroundColor,
         backgroundImage: this.canvasState().backgroundImage,
-        canvasJson: this.canvasService.serializeCanvas()
+        canvasJson: this.canvasService.serializeCanvas(),
       },
-      printSetting: this.template().printSetting
+      printSetting: this.template().printSetting,
     };
   }
 
@@ -373,7 +396,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       // Ensure printSetting has default values for missing properties
       const printSetting = {
         ...DEFAULT_PRINT_SETTING,
-        ...labelTemplate.printSetting
+        ...labelTemplate.printSetting,
       };
       this.template.set({ ...labelTemplate, printSetting });
       if (labelTemplate.label.canvasJson) {
@@ -386,14 +409,14 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   rasterize(): void {
     const label = this.buildLabelTemplate().label;
-    this.labelGeneratorService.generateSinglePng(label).then(blob => {
+    this.labelGeneratorService.generateSinglePng(label).then((blob) => {
       this.labelGeneratorService.download(blob, 'label.png');
     });
   }
 
   rasterizeSVG(): void {
     const label = this.buildLabelTemplate().label;
-    this.labelGeneratorService.generateSingleSvg(label).then(svg => {
+    this.labelGeneratorService.generateSingleSvg(label).then((svg) => {
       this.labelGeneratorService.downloadSvg(svg, 'label.svg');
     });
   }
@@ -414,7 +437,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       height: labelTemplate.label.height,
       backgroundColor: labelTemplate.label.backgroundColor,
       backgroundImage: labelTemplate.label.backgroundImage,
-      canvasJson: labelTemplate.label.canvasJson
+      canvasJson: labelTemplate.label.canvasJson,
     };
 
     const blob = await this.labelGeneratorService.generateSinglePdf(labelData);
@@ -426,9 +449,9 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   updatePrintSetting(printSetting: PrintSetting): void {
-    this.template.update(t => ({
+    this.template.update((t) => ({
       ...t,
-      printSetting: { ...printSetting }
+      printSetting: { ...printSetting },
     }));
   }
 }

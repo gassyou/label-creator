@@ -23,10 +23,7 @@
 
   <label>
     <span>Font Family</span>
-    <select
-      [ngModel]="$any(s).fontFamily"
-      (ngModelChange)="onFontFamilyChange($event)"
-    >
+    <select [ngModel]="$any(s).fontFamily" (ngModelChange)="onFontFamilyChange($event)">
       <option value="Liberation Sans">Liberation Sans</option>
       <option value="Noto Sans SC">Noto Sans SC</option>
     </select>

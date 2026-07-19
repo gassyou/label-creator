@@ -5,10 +5,7 @@ import {
   type EditorSelectionState,
   type LabelElement,
 } from '../models/editor.models';
-import {
-  DEFAULT_PAGE_SETTINGS,
-  type LabelPageSettings,
-} from './label-document';
+import { DEFAULT_PAGE_SETTINGS, type LabelPageSettings } from './label-document';
 
 /**
  * Runtime central model. Single source of truth for the editor's editing
