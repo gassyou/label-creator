@@ -82,27 +82,21 @@ export class EditorCanvasService {
       backgroundImage?: string;
     },
   ): void {
-    this.renderer.initialize(element, canvasState);
+    // Delegate canvas lifecycle (construct + event wiring + interaction mode
+    // + initial render) to FabricRenderer. The renderer fires the editor-layer
+    // callbacks below for Fabric events; SelectionService + this.touchRevision
+    // translate them into doc/UI state.
+    this.renderer.initialize(element, canvasState, {
+      onSelectionCreated: (obj) => this.selection.handleFabricSelection(obj),
+      onSelectionUpdated: (obj) => this.selection.handleFabricSelection(obj),
+      onSelectionCleared: () => this.selection.handleFabricSelection(null),
+      onObjectAdded: () => this.touchRevision(),
+      onObjectModified: (obj) => this.selection.handleFabricModification(obj),
+      onObjectRemoved: () => this.touchRevision(),
+      onTextChanged: (obj) => this.selection.handleFabricSelection(obj),
+    });
     const canvas = this.renderer.getCanvas();
     if (!canvas) return;
-
-    canvas.on('selection:created', () =>
-      this.selection.handleFabricSelection(this.canvas?.getActiveObject() ?? null),
-    );
-    canvas.on('selection:updated', () =>
-      this.selection.handleFabricSelection(this.canvas?.getActiveObject() ?? null),
-    );
-    canvas.on('selection:cleared', () => this.selection.handleFabricSelection(null));
-    canvas.on('object:added', () => this.touchRevision());
-    canvas.on('object:modified', () =>
-      this.selection.handleFabricModification(this.canvas?.getActiveObject() ?? null),
-    );
-    canvas.on('object:removed', () => this.touchRevision());
-    canvas.on('text:changed', () =>
-      this.selection.handleFabricSelection(this.canvas?.getActiveObject() ?? null),
-    );
-    this.applyInteractionMode();
-    canvas.requestRenderAll();
 
     // Hand the canvas instance to UndoRedoService so it can take snapshots
     // and apply them. Done after `renderer.initialize` so the canvas is live.
@@ -119,7 +113,11 @@ export class EditorCanvasService {
 
   setDrawingMode(enabled: boolean): void {
     this.drawingModeEnabled = enabled;
-    this.applyInteractionMode();
+    // SelectionService.handleFabricSelection(null) is the only side-effect
+    // of entering drawing mode that is NOT a Fabric concern — it clears the
+    // editor-layer selection signals. The renderer handles the Fabric-side
+    // (isDrawingMode, cursor, object selectability) directly.
+    this.renderer.setDrawingMode(enabled, () => this.handleSelection(null));
   }
 
   /**
@@ -1311,28 +1309,18 @@ export class EditorCanvasService {
     this.selection.handleFabricModification(object);
   }
 
+  /**
+   * Backwards-compatible entry point that delegates to
+   * {@link FabricRenderer.setDrawingMode} so existing internal callers
+   * (undo/redo, loadPage, loadFromLocalStorage, setDrawingMode) keep
+   * compiling unchanged. The Fabric-side state now lives on the renderer;
+   * this method only re-applies the current `drawingModeEnabled` flag.
+   */
   private applyInteractionMode(): void {
-    if (!this.canvas) {
-      return;
-    }
-
-    this.canvas.isDrawingMode = this.drawingModeEnabled;
-    this.canvas.selection = !this.drawingModeEnabled;
-    this.canvas.skipTargetFind = this.drawingModeEnabled;
-    this.canvas.defaultCursor = this.drawingModeEnabled ? 'crosshair' : 'default';
-    this.canvas.hoverCursor = this.drawingModeEnabled ? 'crosshair' : 'move';
-
-    this.canvas.forEachObject((object) => {
-      object.set({
-        selectable: !this.drawingModeEnabled,
-        evented: !this.drawingModeEnabled,
-      });
-    });
-
-    if (this.drawingModeEnabled) {
-      this.canvas.discardActiveObject();
-      this.handleSelection(null);
-    }
+    if (!this.canvas) return;
+    this.renderer.setDrawingMode(this.drawingModeEnabled, () =>
+      this.handleSelection(null),
+    );
   }
 
   /**

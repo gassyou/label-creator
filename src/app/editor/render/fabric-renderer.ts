@@ -20,7 +20,7 @@
  * guard: replace boolean with syncDirection" for the rationale.
  */
 import { Injectable, effect, inject, signal, untracked } from '@angular/core';
-import { Canvas } from 'fabric';
+import { Canvas, FabricObject } from 'fabric';
 import type { LabelElement } from '../models/editor.models';
 import { PX_PER_MM } from '../models/label.models';
 import { LabelDocumentService } from '../document/label-document.service';
@@ -28,6 +28,24 @@ import type { LabelPageSettings } from '../document/label-document';
 import type { RenderContext } from '../models/element-base';
 
 export type SyncDirection = 'idle' | 'doc-to-fabric' | 'fabric-to-doc';
+
+/**
+ * Callbacks the renderer fires when Fabric raises canvas events.
+ * `EditorCanvasService` (or any editor-layer facade) supplies these when
+ * calling {@link FabricRenderer.initialize} so the renderer owns the
+ * canvas lifecycle end-to-end: construction, event wiring, interaction
+ * mode, and requestRenderAll — without leaking Fabric-instance-specific
+ * references to callers.
+ */
+export interface FabricEditorEvents {
+  onSelectionCreated?: (obj: FabricObject | null) => void;
+  onSelectionUpdated?: (obj: FabricObject | null) => void;
+  onSelectionCleared?: () => void;
+  onObjectAdded?: () => void;
+  onObjectModified?: (obj: FabricObject | null) => void;
+  onObjectRemoved?: () => void;
+  onTextChanged?: (obj: FabricObject | null) => void;
+}
 
 @Injectable()
 export class FabricRenderer {
@@ -37,6 +55,9 @@ export class FabricRenderer {
   private canvasElement: HTMLCanvasElement | null = null;
 
   readonly syncDirection = signal<SyncDirection>('idle');
+
+  /** Current interaction mode (false = select/edit, true = drawing). */
+  private drawingMode = false;
 
   constructor() {
     // document → fabric: re-render elements when the document changes.
@@ -63,6 +84,7 @@ export class FabricRenderer {
       backgroundColor: string;
       backgroundImage?: string;
     },
+    events?: FabricEditorEvents,
   ): void {
     this.canvas?.dispose();
     this.canvasElement = element;
@@ -78,13 +100,116 @@ export class FabricRenderer {
       height: canvasState.height,
     });
     this.canvas.backgroundColor = canvasState.backgroundColor;
+
+    this.wireEditorEvents(events);
+    this.applyInteractionMode();
     this.canvas.requestRenderAll();
   }
 
   dispose(): void {
+    // Drop event listeners before disposing the underlying canvas.
+    this.unwireEditorEvents();
     this.canvas?.dispose();
     this.canvas = null;
     this.canvasElement = null;
+  }
+
+  /**
+   * Sets the interaction mode (drawing vs select) and applies it to the
+   * Fabric canvas. The facade previously owned this; it's a Fabric-instance
+   * concern so it lives here now. The optional `onEnterDrawing` lets the
+   * facade clear its selection-state signals on entry to drawing mode
+   * (the selection clear side-effect is NOT a Fabric concern).
+   */
+  setDrawingMode(enabled: boolean, onEnterDrawing?: () => void): boolean {
+    const changed = this.drawingMode !== enabled;
+    this.drawingMode = enabled;
+    this.applyInteractionMode();
+    if (enabled && changed && onEnterDrawing) onEnterDrawing();
+    return changed;
+  }
+
+  isDrawingMode(): boolean {
+    return this.drawingMode;
+  }
+
+  private applyInteractionMode(): void {
+    if (!this.canvas) return;
+
+    this.canvas.isDrawingMode = this.drawingMode;
+    this.canvas.selection = !this.drawingMode;
+    this.canvas.skipTargetFind = this.drawingMode;
+    this.canvas.defaultCursor = this.drawingMode ? 'crosshair' : 'default';
+    this.canvas.hoverCursor = this.drawingMode ? 'crosshair' : 'move';
+
+    this.canvas.forEachObject((object) => {
+      object.set({
+        selectable: !this.drawingMode,
+        evented: !this.drawingMode,
+      });
+    });
+
+    if (this.drawingMode) {
+      this.canvas.discardActiveObject();
+    }
+  }
+
+  /**
+   * Bound handler stash: pairs of (eventName, handler) used to detach
+   * the exact same function reference on dispose — required because
+   * modern Fabric deprecated the no-arg `canvas.off()` overload.
+   */
+  private wiredHandlers: Array<[string, (...args: unknown[]) => void]> = [];
+
+  private unwireEditorEvents(): void {
+    if (!this.canvas || this.wiredHandlers.length === 0) return;
+    for (const [eventName, handler] of this.wiredHandlers) {
+      this.canvas.off(eventName as never, handler as never);
+    }
+    this.wiredHandlers = [];
+  }
+
+  private wireEditorEvents(events?: FabricEditorEvents): void {
+    if (!this.canvas || !events) return;
+    const canvas = this.canvas;
+
+    const add = (
+      eventName: string,
+      handler: (...args: unknown[]) => void,
+    ): void => {
+      canvas.on(eventName as never, handler as never);
+      this.wiredHandlers.push([eventName, handler]);
+    };
+
+    if (events.onSelectionCreated) {
+      add('selection:created', () =>
+        events.onSelectionCreated!(canvas.getActiveObject() ?? null),
+      );
+    }
+    if (events.onSelectionUpdated) {
+      add('selection:updated', () =>
+        events.onSelectionUpdated!(canvas.getActiveObject() ?? null),
+      );
+    }
+    if (events.onSelectionCleared) {
+      add('selection:cleared', () => events.onSelectionCleared!());
+    }
+    if (events.onObjectAdded) {
+      add('object:added', () => events.onObjectAdded!());
+    }
+    if (events.onObjectModified) {
+      add('object:modified', () =>
+        events.onObjectModified!(canvas.getActiveObject() ?? null),
+      );
+    }
+    if (events.onObjectRemoved) {
+      add('object:removed', () => events.onObjectRemoved!());
+    }
+    if (events.onTextChanged) {
+      add('text:changed', () =>
+        events.onTextChanged!(canvas.getActiveObject() ?? null),
+      );
+    }
   }
 
   getCanvas(): Canvas | null {
