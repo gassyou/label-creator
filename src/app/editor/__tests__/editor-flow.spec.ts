@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { EditorCanvasService } from '../editor-canvas.service';
 import { LabelDocumentService } from '../document/label-document.service';
 import { FabricRenderer } from '../render/fabric-renderer';
+import { SelectionService } from '../editor/selection.service';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 
 // TODO Phase 1: add canvas-level integration tests once fabric-renderer is extracted.
@@ -13,7 +14,12 @@ describe('Canvas ↔ Doc round-trip', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [EditorCanvasService, LabelDocumentService, FabricRenderer],
+      providers: [
+        EditorCanvasService,
+        LabelDocumentService,
+        FabricRenderer,
+        SelectionService,
+      ],
     });
     service = TestBed.inject(EditorCanvasService);
     doc = TestBed.inject(LabelDocumentService);

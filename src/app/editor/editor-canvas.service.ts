@@ -22,6 +22,7 @@ import { AddImageCommand } from './commands/add-image.command';
 import { DeleteSelectedCommand } from './commands/delete-selected.command';
 import { ClearCanvasCommand } from './commands/clear-canvas.command';
 import { FabricRenderer } from './render/fabric-renderer';
+import { SelectionService } from './editor/selection.service';
 
 /**
  * A single undo/redo snapshot. Bundles the Fabric canvas JSON with an
@@ -36,9 +37,6 @@ interface EditorSnapshot {
 
 @Injectable()
 export class EditorCanvasService {
-  readonly selected = signal<BaseElement | null>(null);
-  readonly textEditorVisible = signal(false);
-  readonly figureEditorVisible = signal(false);
   readonly revision = signal(0);
   readonly zoom = signal(1);
   readonly canUndoSignal = signal(false);
@@ -46,6 +44,15 @@ export class EditorCanvasService {
 
   readonly doc = inject(LabelDocumentService);
   private readonly renderer = inject(FabricRenderer);
+  private readonly selection = inject(SelectionService);
+
+  /** Legacy signals — proxies to the moved SelectionService. Kept as
+   * readonly fields so external callers (`selected()`, etc.) continue to
+   * compile. Internal writers now live in SelectionService.
+   */
+  readonly selected = this.selection.selected;
+  readonly textEditorVisible = this.selection.textEditorVisible;
+  readonly figureEditorVisible = this.selection.figureEditorVisible;
 
   /** Backwards-compatible accessor — delegates to the renderer. */
   get canvas(): Canvas | null {
@@ -97,19 +104,19 @@ export class EditorCanvasService {
     if (!canvas) return;
 
     canvas.on('selection:created', () =>
-      this.handleSelection(this.canvas?.getActiveObject() ?? null),
+      this.selection.handleFabricSelection(this.canvas?.getActiveObject() ?? null),
     );
     canvas.on('selection:updated', () =>
-      this.handleSelection(this.canvas?.getActiveObject() ?? null),
+      this.selection.handleFabricSelection(this.canvas?.getActiveObject() ?? null),
     );
-    canvas.on('selection:cleared', () => this.handleSelection(null));
+    canvas.on('selection:cleared', () => this.selection.handleFabricSelection(null));
     canvas.on('object:added', () => this.touchRevision());
     canvas.on('object:modified', () =>
-      this.handleObjectModified(this.canvas?.getActiveObject() ?? null),
+      this.selection.handleFabricModification(this.canvas?.getActiveObject() ?? null),
     );
     canvas.on('object:removed', () => this.touchRevision());
     canvas.on('text:changed', () =>
-      this.handleSelection(this.canvas?.getActiveObject() ?? null),
+      this.selection.handleFabricSelection(this.canvas?.getActiveObject() ?? null),
     );
     this.applyInteractionMode();
     canvas.requestRenderAll();
@@ -118,7 +125,7 @@ export class EditorCanvasService {
   destroy(): void {
     this.renderer.dispose();
     this.elementRegistry.clear();
-    this.handleSelection(null);
+    this.selection.handleFabricSelection(null);
   }
 
   setDrawingMode(enabled: boolean): void {
@@ -1440,93 +1447,27 @@ export class EditorCanvasService {
   // Private Methods
   // ============================================================
 
+  /**
+   * Thin forwarder to {@link SelectionService.handleFabricSelection}.
+   *
+   * Kept (rather than inlining every call site) so existing internal
+   * callers (object:added reconciliation, undo/redo, drawing-mode toggle,
+   * etc.) keep compiling unchanged. The body lives on the SelectionService.
+   */
   private handleSelection(object: any): void {
-    if (!object) {
-      this.selected.set(null);
-      this.textEditorVisible.set(false);
-      this.figureEditorVisible.set(false);
-      this.doc.selectElement(null);
-      return;
-    }
-
-    // Check if this is an ActiveSelection (multi-select)
-    const isMultiSelect = object.type?.toLowerCase() === 'activeselection';
-
-    object.set({
-      hasRotatingPoint: true,
-      transparentCorners: false,
-      cornerColor: 'rgba(37, 99, 235, 0.7)',
-    });
-
-    if (isMultiSelect) {
-      // For multi-selection, set a marker that selection exists
-      const dummyElement: LabelElement = {
-        type: 'rect',
-        id: 'multi-select-marker',
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-      };
-      this.selected.set(dummyElement as unknown as BaseElement);
-      this.textEditorVisible.set(false);
-      this.figureEditorVisible.set(false);
-      this.doc.selectElement(null);
-    } else {
-      const id = this.getObjectId(object);
-      const element = this.elementRegistry.get(id) ?? null;
-      this.selected.set(element);
-
-      // NEW: backfill doc.elements for elements that pre-date the
-      // LabelDocumentService refactor (e.g. elements hydrated from a saved
-      // template via loadPage). Without this, the central document's
-      // `selection` computed returns null and the property panel renders
-      // its muted placeholder instead of the element's properties.
-      if (element && !this.doc.elements().has(id)) {
-        this.doc.addElement(element as LabelElement);
-      }
-
-      this.textEditorVisible.set(false);
-      this.figureEditorVisible.set(false);
-
-      const type = object.type;
-      if (type === 'rect' || type === 'circle' || type === 'triangle' || type === 'line') {
-        this.figureEditorVisible.set(true);
-      } else if (type === 'i-text' || type === 'textbox') {
-        this.textEditorVisible.set(true);
-      }
-
-      // Mirror selection into the central document so doc consumers can
-      // observe it. The local signals above are kept for the legacy panel
-      // (Task 15 migrates them).
-      this.doc.selectElement(id || null);
-    }
+    this.selection.handleFabricSelection(object);
   }
 
   /**
-   * Fabric `object:modified` handler. Writes the new geometry back to the
-   * central document so doc consumers (and the doc → fabric effect) stay
-   * in sync. ActiveSelection (multi-select) is ignored — it has no single id.
+   * Thin forwarder to {@link SelectionService.handleFabricModification}.
+   *
+   * The actual Fabric → doc write (with cycle guard) is performed inside
+   * the SelectionService → FabricRenderer chain. This wrapper exists for
+   * the same reason as {@link handleSelection}: keep internal call sites
+   * compiling unchanged.
    */
   private handleObjectModified(object: any): void {
-    // Delegate the doc-write (and the cycle guard) to the renderer. The
-    // renderer flips `syncDirection` to 'fabric-to-doc' across the write
-    // and resets it on the way out, suppressing the echo back from the
-    // doc → fabric effect.
-    const wrote = this.renderer.handleObjectModified(object);
-    if (wrote) {
-      this.handleSelection(object);
-      return;
-    }
-
-    if (!object) {
-      this.handleSelection(null);
-      return;
-    }
-
-    // Echoes of doc-driven updates, null, or multi-select: just refresh
-    // the selection state without writing to the document.
-    this.handleSelection(this.canvas?.getActiveObject() ?? null);
+    this.selection.handleFabricModification(object);
   }
 
   private applyInteractionMode(): void {
