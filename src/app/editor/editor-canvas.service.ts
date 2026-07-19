@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Canvas, FabricImage, IText, Pattern } from 'fabric';
 import {
   DEFAULT_SELECTION_STATE,
@@ -10,7 +10,7 @@ import {
   EditorSelectionState,
 } from './models/editor.models';
 import { Label, PX_PER_MM, millimetersToPixels } from './models/label.models';
-import { LabelDocumentService, type LabelPageSettings } from './document';
+import { LabelDocumentService } from './document';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { ElementFactory } from './models/element-factory';
 import { EditorCommand } from './commands/editor-command';
@@ -21,6 +21,7 @@ import { AddBarcodeCommand } from './commands/add-barcode.command';
 import { AddImageCommand } from './commands/add-image.command';
 import { DeleteSelectedCommand } from './commands/delete-selected.command';
 import { ClearCanvasCommand } from './commands/clear-canvas.command';
+import { FabricRenderer } from './render/fabric-renderer';
 
 @Injectable()
 export class EditorCanvasService {
@@ -33,34 +34,26 @@ export class EditorCanvasService {
   readonly canRedoSignal = signal(false);
 
   readonly doc = inject(LabelDocumentService);
+  private readonly renderer = inject(FabricRenderer);
 
-  public canvas: Canvas | null = null;
+  /** Backwards-compatible accessor — delegates to the renderer. */
+  get canvas(): Canvas | null {
+    return this.renderer.getCanvas();
+  }
+
   private drawingModeEnabled = false;
   private hydrating = false;
-  private canvasElement: HTMLCanvasElement | null = null;
-
-  /**
-   * Set to true while we are applying a `LabelDocument` change to Fabric.
-   * While true, our own `object:modified` / `selection:created` events are
-   * ignored — they are echoes of a doc-driven update, not user input.
-   */
-  private isApplyingFromDoc = false;
 
   // Element registry for tracking all elements on canvas
+  // Delegates to the renderer; kept as a public field for legacy callers
+  // (Phase 6 deletes this).
   public elementRegistry: Map<string, BaseElement> = new Map();
 
   constructor() {
-    // document → fabric: re-render elements when the document changes.
-    effect(() => {
-      const elements = this.doc.elements();
-      untracked(() => this.applyElementsFromDoc(elements));
-    });
-
-    // document → fabric: re-render canvas (size, background) when page changes.
-    effect(() => {
-      const page = this.doc.page();
-      untracked(() => this.applyPageFromDoc(page));
-    });
+    // Sync local elementRegistry view with the renderer-owned registry.
+    // Phase 6 deletes elementRegistry entirely; until then this keeps the
+    // legacy API (read/write elementRegistry) intact.
+    this.elementRegistry = this.renderer.getElementRegistry() as Map<string, BaseElement>;
   }
 
   // Clipboard for copy/paste
@@ -81,43 +74,31 @@ export class EditorCanvasService {
       backgroundImage?: string;
     },
   ): void {
-    this.canvas?.dispose();
-    this.canvasElement = element;
-    this.canvas = new Canvas(element, {
-      hoverCursor: 'pointer',
-      selection: true,
-      selectionBorderColor: '#2563eb',
-      isDrawingMode: false,
-    });
+    this.renderer.initialize(element, canvasState);
+    const canvas = this.renderer.getCanvas();
+    if (!canvas) return;
 
-    this.canvas.setDimensions({
-      width: canvasState.width,
-      height: canvasState.height,
-    });
-    this.canvas.backgroundColor = canvasState.backgroundColor;
-
-    this.canvas.on('selection:created', () =>
+    canvas.on('selection:created', () =>
       this.handleSelection(this.canvas?.getActiveObject() ?? null),
     );
-    this.canvas.on('selection:updated', () =>
+    canvas.on('selection:updated', () =>
       this.handleSelection(this.canvas?.getActiveObject() ?? null),
     );
-    this.canvas.on('selection:cleared', () => this.handleSelection(null));
-    this.canvas.on('object:added', () => this.touchRevision());
-    this.canvas.on('object:modified', () =>
+    canvas.on('selection:cleared', () => this.handleSelection(null));
+    canvas.on('object:added', () => this.touchRevision());
+    canvas.on('object:modified', () =>
       this.handleObjectModified(this.canvas?.getActiveObject() ?? null),
     );
-    this.canvas.on('object:removed', () => this.touchRevision());
-    this.canvas.on('text:changed', () =>
+    canvas.on('object:removed', () => this.touchRevision());
+    canvas.on('text:changed', () =>
       this.handleSelection(this.canvas?.getActiveObject() ?? null),
     );
     this.applyInteractionMode();
-    this.canvas.requestRenderAll();
+    canvas.requestRenderAll();
   }
 
   destroy(): void {
-    this.canvas?.dispose();
-    this.canvas = null;
+    this.renderer.dispose();
     this.elementRegistry.clear();
     this.handleSelection(null);
   }
@@ -1394,9 +1375,13 @@ export class EditorCanvasService {
    * in sync. ActiveSelection (multi-select) is ignored — it has no single id.
    */
   private handleObjectModified(object: any): void {
-    // Echoes of doc-driven updates must not re-enter the document.
-    if (this.isApplyingFromDoc) {
-      this.handleSelection(this.canvas?.getActiveObject() ?? null);
+    // Delegate the doc-write (and the cycle guard) to the renderer. The
+    // renderer flips `syncDirection` to 'fabric-to-doc' across the write
+    // and resets it on the way out, suppressing the echo back from the
+    // doc → fabric effect.
+    const wrote = this.renderer.handleObjectModified(object);
+    if (wrote) {
+      this.handleSelection(object);
       return;
     }
 
@@ -1405,38 +1390,9 @@ export class EditorCanvasService {
       return;
     }
 
-    // Multi-select: skip per-element write; just refresh selection state.
-    if (object.type?.toLowerCase() === 'activeselection') {
-      this.handleSelection(object);
-      return;
-    }
-
-    const id = this.getObjectId(object);
-    if (!id) {
-      this.handleSelection(this.canvas?.getActiveObject() ?? null);
-      return;
-    }
-
-    const visualWidth = (object.width ?? 0) * (object.scaleX ?? 1);
-    const visualHeight = (object.height ?? 0) * (object.scaleY ?? 1);
-    const patch: Partial<LabelElement> = {
-      x: object.left ?? 0,
-      y: object.top ?? 0,
-      width: visualWidth,
-      height: visualHeight,
-    } as Partial<LabelElement>;
-    const anyObj = object as any;
-    if (anyObj.angle !== undefined) (patch as any).rotation = anyObj.angle;
-    if (anyObj.opacity !== undefined) (patch as any).opacity = anyObj.opacity;
-    if (anyObj.scaleX !== undefined) (patch as any).scaleX = anyObj.scaleX;
-    if (anyObj.scaleY !== undefined) (patch as any).scaleY = anyObj.scaleY;
-
-    // Persist the geometry into the doc. This triggers the elements effect
-    // (re-entering via applyElementsFromDoc, which sets isApplyingFromDoc
-    // and is therefore ignored on the next object:modified bounce).
-    this.doc.updateElement(id, patch);
-
-    this.handleSelection(object);
+    // Echoes of doc-driven updates, null, or multi-select: just refresh
+    // the selection state without writing to the document.
+    this.handleSelection(this.canvas?.getActiveObject() ?? null);
   }
 
   private applyInteractionMode(): void {
@@ -1481,13 +1437,10 @@ export class EditorCanvasService {
 
   /**
    * Called by element render() methods to attach element id to Fabric object.
+   * Delegates to the renderer (single source of truth for serialization helpers).
    */
   protected extend(obj: any, id: string | number): void {
-    const originalToObject = obj.toObject;
-    obj.toObject = ((toObject) => () => ({
-      ...toObject.call(obj),
-      id,
-    }))(originalToObject);
+    this.renderer.extend(obj, id);
   }
 
   /**
@@ -1495,65 +1448,33 @@ export class EditorCanvasService {
    * its toObject so the custom fields survive serialization. Called by element
    * render() methods via the RenderContext. Used for barcode/qrcode elements
    * and any other element that carries business-specific custom fields.
+   * Delegates to the renderer.
    */
   protected extendWithCustomProperties(obj: any, props: Record<string, any>): void {
-    // Assign properties directly to the object
-    Object.assign(obj, props);
-
-    // Override toObject to include custom properties in serialization
-    const originalToObject = obj.toObject;
-    obj.toObject = function (this: any) {
-      const result = originalToObject.call(this);
-      return {
-        ...result,
-        elementType: this.elementType,
-        bindingValue: this.bindingValue,
-        errorCorrectionLevel: this.errorCorrectionLevel,
-        foregroundColor: this.foregroundColor,
-        backgroundColor: this.backgroundColor,
-        barcodeFormat: this.barcodeFormat,
-        showText: this.showText,
-      };
-    };
+    this.renderer.extendWithCustomProperties(obj, props);
   }
 
   /**
    * Generates a small gray placeholder PNG data URL used as the initial image
    * for barcode/qrcode elements before any binding value is rendered. Exposed
    * via RenderContext so elements can call it during render().
+   * Delegates to the renderer.
    */
   protected createPlaceholderDataUrl(text: string, w: number, h: number): string {
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = '#999';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(text, w / 2, h / 2);
-    }
-    return canvas.toDataURL('image/png');
+    return this.renderer.createPlaceholderDataUrl(text, w, h);
   }
 
   /**
    * Generates a unique element id. Exposed via RenderContext so element
    * render() methods can assign ids without depending on internals.
+   * Delegates to the renderer.
    */
   public randomId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return this.renderer.randomId();
   }
 
   private getObjectId(object: any): string {
-    try {
-      const serializableObject = object as any;
-      const id = serializableObject.toObject(['id']).id;
-      return id ? String(id) : '';
-    } catch {
-      return '';
-    }
+    return this.renderer.getObjectId(object);
   }
 
   private getActiveStyle<T = string | number>(styleName: string): T | '' {
@@ -1649,130 +1570,6 @@ export class EditorCanvasService {
     this.revision.update((value) => value + 1);
   }
 
-  private applyElementsFromDoc(elements: ReadonlyMap<string, LabelElement>): void {
-    if (!this.canvas) return;
-    this.isApplyingFromDoc = true;
-    try {
-      const canvas = this.canvas;
-
-      // Build an id → FabricObject map from what is currently on the canvas.
-      const onCanvas = new Map<string, any>();
-      canvas.getObjects().forEach((obj) => {
-        const id = this.getObjectId(obj);
-        if (id) onCanvas.set(id, obj);
-      });
-
-      // For each element in the document, push the doc's fields onto the
-      // matching Fabric object. Fabric objects use `set({...})` for proper
-      // change events. We deliberately skip fields that require image
-      // regeneration (barcode.text / barcodeFormat / showText, qrcode.text /
-      // errorCorrectionLevel / foregroundColor / backgroundColor) — that
-      // needs a follow-up that re-issues the QR/barcode image. We DO push
-      // the fields Fabric `set()` understands natively.
-      //
-      // Document elements that are not on the canvas: leave them alone (new
-      // elements still come through Add*Command). Canvas objects that are
-      // not in the document: leave them alone (deletion still goes through
-      // DeleteSelectedCommand).
-      for (const [id, data] of elements.entries()) {
-        const obj = this.elementRegistry.get(id) ? onCanvas.get(id) : null;
-        if (!obj) continue;
-
-        const anyData = data as unknown as Record<string, unknown>;
-        const setObj = obj as any;
-        const t = anyData['type'] as string | undefined;
-
-        // Common: opacity, geometry, rotation
-        if (anyData['opacity'] !== undefined) setObj.set('opacity', anyData['opacity']);
-        if (anyData['rotation'] !== undefined) setObj.set('angle', anyData['rotation']);
-
-        // Position — written by Fabric → doc via handleObjectModified.
-        // Apply only when present in the patch (doc carries current truth).
-        if (anyData['x'] !== undefined) setObj.set('left', anyData['x']);
-        if (anyData['y'] !== undefined) setObj.set('top', anyData['y']);
-
-        if (anyData['width'] !== undefined) setObj.set('width', anyData['width']);
-        if (anyData['height'] !== undefined) setObj.set('height', anyData['height']);
-        // After geometry changes reset scale so width/height are visual.
-        if (anyData['width'] !== undefined || anyData['height'] !== undefined) {
-          setObj.set('scaleX', 1);
-          setObj.set('scaleY', 1);
-        }
-
-        if (t === 'text') {
-          if (anyData['text'] !== undefined) setObj.set('text', anyData['text']);
-          if (anyData['fontSize'] !== undefined) setObj.set('fontSize', anyData['fontSize']);
-          if (anyData['fontFamily'] !== undefined)
-            setObj.set('fontFamily', anyData['fontFamily']);
-          if (anyData['fontWeight'] !== undefined)
-            setObj.set('fontWeight', anyData['fontWeight']);
-          if (anyData['fontStyle'] !== undefined)
-            setObj.set('fontStyle', anyData['fontStyle']);
-          if (anyData['textAlign'] !== undefined)
-            setObj.set('textAlign', anyData['textAlign']);
-          if (anyData['textDecoration'] !== undefined)
-            setObj.set('textDecoration', anyData['textDecoration']);
-          if (anyData['fill'] !== undefined) setObj.set('fill', anyData['fill']);
-          else if (anyData['color'] !== undefined) setObj.set('fill', anyData['color']);
-          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
-          if (anyData['strokeWidth'] !== undefined)
-            setObj.set('strokeWidth', anyData['strokeWidth']);
-        } else if (t === 'rect' || t === 'circle' || t === 'triangle' || t === 'image') {
-          if (anyData['fill'] !== undefined) setObj.set('fill', anyData['fill']);
-          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
-          if (anyData['strokeWidth'] !== undefined)
-            setObj.set('strokeWidth', anyData['strokeWidth']);
-        } else if (t === 'line') {
-          // Line length is encoded as width/height (x2-x1, y2-y1) — push to
-          // the actual Fabric line endpoint fields.
-          const x1 = (obj as any).x1 ?? 0;
-          const y1 = (obj as any).y1 ?? 0;
-          if (anyData['width'] !== undefined || anyData['height'] !== undefined) {
-            const x2 = x1 + ((anyData['width'] as number) ?? 0);
-            const y2 = y1 + ((anyData['height'] as number) ?? 0);
-            setObj.set({ x2, y2 });
-          }
-          if (anyData['stroke'] !== undefined) setObj.set('stroke', anyData['stroke']);
-          if (anyData['strokeWidth'] !== undefined)
-            setObj.set('strokeWidth', anyData['strokeWidth']);
-        } else if (t === 'barcode' || t === 'qrcode') {
-          // Image-backed elements. Width/height/opacity handled above.
-          // Image regeneration for value/format/etc. is left for follow-up.
-        }
-
-        // Refresh coords so the next render uses the new state.
-        if (typeof (obj as any).setCoords === 'function') {
-          (obj as any).setCoords();
-        }
-      }
-
-      canvas.requestRenderAll();
-    } finally {
-      this.isApplyingFromDoc = false;
-    }
-  }
-
-  private applyPageFromDoc(page: LabelPageSettings): void {
-    if (!this.canvas) return;
-    this.isApplyingFromDoc = true;
-    try {
-      // Update canvas dimensions (px) and background color/image. Mirrors
-      // the legacy logic in editor.ts and editor-canvas.service.ts
-      // applyCanvasFill / resizeCanvas / setCanvasBackground methods.
-      const wPx = Math.round(page.widthMm * PX_PER_MM);
-      const hPx = Math.round(page.heightMm * PX_PER_MM);
-      this.canvas.setDimensions({ width: wPx, height: hPx });
-      if (page.backgroundColor) {
-        this.canvas.backgroundColor = page.backgroundColor;
-      } else {
-        this.canvas.backgroundColor = '';
-      }
-      this.canvas.requestRenderAll();
-    } finally {
-      this.isApplyingFromDoc = false;
-    }
-  }
-
   /**
    * Compress image and apply as background
    */
@@ -1815,8 +1612,9 @@ export class EditorCanvasService {
 
   private setZoom(scale: number): void {
     this.zoom.set(scale);
-    if (this.canvasElement) {
-      this.canvasElement.style.setProperty('--canvas-zoom', String(scale));
+    const element = this.renderer.getCanvasElement();
+    if (element) {
+      element.style.setProperty('--canvas-zoom', String(scale));
     }
     this.canvas?.requestRenderAll();
   }
