@@ -35,8 +35,10 @@ import {
 import { webFontLoader } from '../print/generators/web-font-loader';
 import { LabelDocumentService } from './document';
 import { OperationsService } from './editor/operations.service';
-import { LabelConverter } from './persistence/label-converter';
+import { SelectionService } from './editor/selection.service';
 import { UndoRedoService } from './editor/undo-redo.service';
+import { FabricRenderer } from './render/fabric-renderer';
+import { LabelConverter } from './persistence/label-converter';
 
 @Component({
   selector: 'app-editor',
@@ -47,7 +49,7 @@ import { UndoRedoService } from './editor/undo-redo.service';
     EditorToolStripComponent,
     PrintSettingDialogComponent,
   ],
-  providers: [EditorCanvasService, LabelDocumentService, OperationsService, UndoRedoService],
+  providers: [EditorCanvasService, LabelDocumentService, OperationsService, SelectionService, UndoRedoService, FabricRenderer],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
@@ -55,8 +57,17 @@ import { UndoRedoService } from './editor/undo-redo.service';
 export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('htmlCanvas', { static: true }) htmlCanvas!: ElementRef<HTMLCanvasElement>;
 
+  /** Facade still needed for: state signals (`revision`, `zoom`), the
+   *  Add*Command ctx surface (`canvas`, `randomId`, `getRenderContext`,
+   *  `selectItemAfterAdded`, `setSelection*`), and the JSON preview's
+   *  `toCanvasJson()` accessor. EditorComponent does NOT route undo/redo,
+   *  geometric ops, lifecycle, or zoom through it.
+   */
   readonly canvasService = inject(EditorCanvasService);
   private readonly operations = inject(OperationsService);
+  private readonly selection = inject(SelectionService);
+  private readonly undoRedo = inject(UndoRedoService);
+  private readonly renderer = inject(FabricRenderer);
   private readonly templateService = inject(TemplateService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -74,7 +85,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   readonly pageSizePresets = PAGE_SIZE_PRESETS;
   readonly hasSelection = computed(
-    () => this.canvasService.hasSelection() || this.canvasService.hasMultiSelection(),
+    () => this.selection.hasSelection() || this.selection.hasMultiSelection(),
   );
 
   /** Single-page template signal */
@@ -172,33 +183,33 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
     if (modifier && event.key === 'c') {
       event.preventDefault();
-      this.canvasService.copySelected();
+      this.operations.copySelected();
       return;
     }
 
     if (modifier && event.key === 'v') {
       // 如果用户正在编辑文本框内的内容，让 Fabric.js 处理粘贴
-      if (this.canvasService.isEditingText()) {
+      if (this.isEditingText()) {
         return;
       }
       event.preventDefault();
-      this.canvasService.pasteClipboard();
+      this.operations.pasteClipboard();
       return;
     }
 
     if (modifier && (event.key === 'z' || event.key === 'Z')) {
       event.preventDefault();
       if (event.shiftKey) {
-        void this.canvasService.redo();
+        void this.undoRedo.redo();
       } else {
-        void this.canvasService.undo();
+        void this.undoRedo.undo();
       }
       return;
     }
 
     if (modifier && event.key === 'y') {
       event.preventDefault();
-      this.canvasService.redo();
+      void this.undoRedo.redo();
       return;
     }
 
@@ -210,7 +221,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         return;
       }
       event.preventDefault();
-      void this.canvasService.deleteSelected();
+      void this.operations.deleteSelected();
       return;
     }
   }
@@ -220,7 +231,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
     switch (tool) {
       case 'select':
-        this.canvasService.clearSelection();
+        this.renderer.getCanvas()?.discardActiveObject();
+        this.renderer.getCanvas()?.requestRenderAll();
         return;
       case 'text':
         void this.operations.addText(this.textString);
@@ -242,27 +254,27 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   alignObjects(direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'): void {
-    this.canvasService.alignSelectedObjects(direction);
+    this.operations.alignSelectedObjects(direction);
   }
 
   distributeObjects(direction: 'horizontal' | 'vertical'): void {
-    this.canvasService.distributeSelectedObjects(direction);
+    this.operations.distributeSelectedObjects(direction);
   }
 
   hasMultiSelection(): boolean {
-    return this.canvasService.hasMultiSelection();
+    return this.selection.hasMultiSelection();
   }
 
   cloneSelection(): void {
-    this.canvasService.cloneSelected();
+    this.operations.cloneSelected();
   }
 
   bringSelectionToFront(): void {
-    this.canvasService.bringSelectionToFront();
+    this.operations.bringSelectionToFront();
   }
 
   sendSelectionToBack(): void {
-    this.canvasService.sendSelectionToBack();
+    this.operations.sendSelectionToBack();
   }
 
   /**
@@ -424,11 +436,32 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   zoomIn(): void {
-    this.canvasService.zoomIn();
+    const newZoom = Math.min(this.canvasService.zoom() + 0.1, 3);
+    this.canvasService.zoom.set(newZoom);
+    const element = this.renderer.getCanvasElement();
+    if (element) {
+      element.style.setProperty('--canvas-zoom', String(newZoom));
+    }
+    this.renderer.getCanvas()?.requestRenderAll();
   }
 
   zoomOut(): void {
-    this.canvasService.zoomOut();
+    const newZoom = Math.max(this.canvasService.zoom() - 0.1, 0.3);
+    this.canvasService.zoom.set(newZoom);
+    const element = this.renderer.getCanvasElement();
+    if (element) {
+      element.style.setProperty('--canvas-zoom', String(newZoom));
+    }
+    this.renderer.getCanvas()?.requestRenderAll();
+  }
+
+  /** True if a text object is currently in Fabric's edit mode. Used by the
+   *  Ctrl+V keyboard handler to let Fabric handle paste inside text boxes.
+   */
+  private isEditingText(): boolean {
+    const activeObject = this.renderer.getCanvas()?.getActiveObject();
+    if (!activeObject) return false;
+    return (activeObject as any).isEditing === true;
   }
 
   async exportPdf(): Promise<void> {

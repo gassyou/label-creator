@@ -50,6 +50,23 @@ export class SelectionService {
   readonly selection = this.doc.selection;
   readonly selectionProperties = this.doc.selectionProperties;
 
+  /**
+   * True if any Fabric object is currently active on the canvas. Used by
+   * the toolbar to enable/disable selection-dependent buttons.
+   */
+  hasSelection(): boolean {
+    return !!this.renderer.getCanvas()?.getActiveObject();
+  }
+
+  /**
+   * True if more than one Fabric object is currently active. Drives
+   * the multi-selection alignment / distribute toolbar cluster.
+   */
+  hasMultiSelection(): boolean {
+    const objects = this.renderer.getCanvas()?.getActiveObjects();
+    return objects ? objects.length > 1 : false;
+  }
+
   // ---------------------------------------------------------------------
   // Called by EditorCanvasService on Fabric events
   // ---------------------------------------------------------------------

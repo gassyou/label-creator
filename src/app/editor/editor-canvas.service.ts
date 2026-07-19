@@ -25,6 +25,31 @@ import { FabricRenderer } from './render/fabric-renderer';
 import { SelectionService } from './editor/selection.service';
 import { UndoRedoService } from './editor/undo-redo.service';
 
+/**
+ * Pure facade over the editor layer. Kept narrow intentionally:
+ *  - Command execution (`execute(cmd)`) — needed because Add*Command files
+ *    still inject this service as their `ctx`.
+ *  - State signals that the legacy UI consumes (`revision`, `zoom`,
+ *    `canUndoSignal`, `canRedoSignal`, `selected`, `textEditorVisible`,
+ *    `figureEditorVisible`).
+ *  - The `*Command` ctx surface (`canvas`, `randomId`, `getRenderContext`,
+ *    `selectItemAfterAdded`, `doc`, `setSelection*`, `extend`,
+ *    `extendWithCustomProperties`, etc.) — these are read by the command
+ *    bodies and by element render() methods.
+ *  - Lifecycle hooks (`initialize`, `destroy`) — the EditorComponent calls
+ *    these; the body delegates to FabricRenderer + UndoRedoService.
+ *  - `serializeCanvas`, `loadPage`, `zoomIn/Out`, `hasSelection`,
+ *    `hasMultiSelection`, `clearSelection`, `isEditingText` — legacy
+ *    facade surface kept because the EditorComponent and JSON preview
+ *    still read these names.
+ *
+ * Geometric / structural operations (`cloneSelected`, `copySelected`,
+ * `pasteClipboard`, `alignSelectedObjects`, `distributeSelectedObjects`,
+ * `bringSelectionToFront`, `sendSelectionToBack`) moved to
+ * {@link OperationsService} — `EditorComponent` now calls them there
+ * directly.
+ */
+
 @Injectable()
 export class EditorCanvasService {
   readonly revision = signal(0);
@@ -69,9 +94,6 @@ export class EditorCanvasService {
     // instead the facade exposes `() => this` lazily when commands need it.
     this.undoRedo.setCanvasServiceFactory(() => this);
   }
-
-  // Clipboard for copy/paste
-  private clipboard: any[] = [];
 
   initialize(
     element: HTMLCanvasElement,
@@ -305,97 +327,6 @@ export class EditorCanvasService {
     }
     this.handleSelection(null);
     this.touchRevision();
-  }
-
-  cloneSelected(): void {
-    const activeObject = this.canvas?.getActiveObject();
-    if (!this.canvas || !activeObject) {
-      return;
-    }
-
-    activeObject.clone().then((clone) => {
-      clone.set({
-        left: (clone.left ?? 0) + 20,
-        top: (clone.top ?? 0) + 20,
-      });
-      this.extend(clone as any, this.randomId());
-      this.canvas?.add(clone);
-      this.selectItemAfterAdded(clone as any);
-    });
-  }
-
-  copySelected(): void {
-    const activeObjects = this.canvas?.getActiveObjects();
-    if (!this.canvas || !activeObjects || activeObjects.length === 0) {
-      return;
-    }
-
-    this.clipboard = [];
-    Promise.all(activeObjects.map((obj) => obj.clone())).then((clones) => {
-      this.clipboard = clones;
-    });
-  }
-
-  pasteClipboard(): void {
-    if (!this.canvas || this.clipboard.length === 0) {
-      return;
-    }
-
-    this.saveUndoState();
-    const newObjects: any[] = [];
-
-    this.clipboard.forEach((clone) => {
-      clone.set({
-        left: (clone.left ?? 0) + 20,
-        top: (clone.top ?? 0) + 20,
-      });
-      this.extend(clone, this.randomId());
-      this.canvas?.add(clone);
-      newObjects.push(clone);
-    });
-
-    if (newObjects.length === 1) {
-      this.canvas?.setActiveObject(newObjects[0]);
-    } else if (newObjects.length > 1) {
-      import('fabric').then(({ ActiveSelection }) => {
-        const selection = new ActiveSelection(newObjects, { canvas: this.canvas! });
-        this.canvas?.setActiveObject(selection);
-        this.canvas?.requestRenderAll();
-      });
-    }
-    this.canvas?.requestRenderAll();
-    this.touchRevision();
-  }
-
-  private saveUndoState(): void {
-    if (!this.canvas || this.hydrating) {
-      return;
-    }
-
-    // Delegate the synchronous pre-paste snapshot push to UndoRedoService.
-    // The service uses the same atomic (canvas + doc) snapshot shape as the
-    // rest of the stack, so paste/clipboard ops remain undoable.
-    this.undoRedo.pushSnapshotSync();
-  }
-
-  bringSelectionToFront(): void {
-    const activeObjects = this.canvas?.getActiveObjects() ?? [];
-    if (!this.canvas || !activeObjects.length) {
-      return;
-    }
-
-    activeObjects.forEach((object) => this.canvas?.bringObjectToFront(object));
-    this.canvas.requestRenderAll();
-  }
-
-  sendSelectionToBack(): void {
-    const activeObjects = this.canvas?.getActiveObjects() ?? [];
-    if (!this.canvas || !activeObjects.length) {
-      return;
-    }
-
-    activeObjects.forEach((object) => this.canvas?.sendObjectToBack(object));
-    this.canvas.requestRenderAll();
   }
 
   resetCanvas(backgroundColor: string): void {
@@ -1466,7 +1397,13 @@ export class EditorCanvasService {
     this.canvas.requestRenderAll();
   }
 
-  private touchRevision(): void {
+  /**
+   * Bumps the `revision` signal (used by JSON preview and dirty-tracking).
+   * Public so {@link OperationsService} can mark the canvas as changed
+   * after geometric ops (align / distribute / bring-front / send-back /
+   * paste). Suppressed while {@link hydrating} is true (snapshot restore).
+   */
+  touchRevision(): void {
     if (this.hydrating) {
       return;
     }

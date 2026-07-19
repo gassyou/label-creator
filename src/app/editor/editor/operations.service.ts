@@ -7,25 +7,28 @@
  *    dispatches it through `EditorCanvasService.execute()` so the standard
  *    undo/redo bookkeeping happens.
  *  - Structural ops on the current selection (`deleteSelected`, `clearCanvas`,
- *    `cloneSelected`).
+ *    `cloneSelected`, `copySelected`, `pasteClipboard`).
  *  - Multi-selection alignment (`alignLeft`, `alignCenter`, `alignRight`,
- *    `alignTop`, `alignMiddle`, `alignBottom`).
+ *    `alignTop`, `alignMiddle`, `alignBottom`, `alignSelectedObjects`,
+ *    `distributeSelectedObjects`).
  *  - Z-order ops (`bringSelectionToFront`, `sendSelectionToBack`).
  *
  * Does NOT own:
  *  - Selection state: that's `SelectionService`.
  *  - Canvas lifecycle / doc → fabric reconciliation: that's `FabricRenderer`.
- *  - Snapshot stack / undo redo: still lives on `EditorCanvasService`
- *    (next refactor move: UndoRedoService).
+ *  - Snapshot stack / undo redo: lives on `EditorCanvasService` (which
+ *    forwards to `UndoRedoService`).
  *
  * Commands are dispatched through `EditorCanvasService.execute(cmd)` so the
  * undo/redo machinery (pushUndoSnapshot, redoStack clearing, error rollback)
  * stays in one place. This service is a thin orchestrator.
  */
 import { Injectable, inject } from '@angular/core';
+import { ActiveSelection } from 'fabric';
 import { EditorCanvasService } from '../editor-canvas.service';
 import { FabricRenderer } from '../render/fabric-renderer';
 import { LabelDocumentService } from '../document/label-document.service';
+import { UndoRedoService } from './undo-redo.service';
 import { AddTextCommand } from '../commands/add-text.command';
 import { AddShapeCommand } from '../commands/add-shape.command';
 import { AddQRCodeCommand } from '../commands/add-qrcode.command';
@@ -46,6 +49,7 @@ export class OperationsService {
   private readonly editorCanvasService = inject(EditorCanvasService);
   private readonly renderer = inject(FabricRenderer);
   private readonly doc = inject(LabelDocumentService);
+  private readonly undoRedo = inject(UndoRedoService);
 
   // ============================================================
   // Element Creation Commands
@@ -99,38 +103,324 @@ export class OperationsService {
     await this.editorCanvasService.execute(new ClearCanvasCommand());
   }
 
+  /** In-memory clipboard for copy/paste. */
+  private clipboard: any[] = [];
+
+  /**
+   * Duplicates the currently active object on the canvas, offset by (+20, +20),
+   * and selects the clone.
+   */
+  cloneSelected(): void {
+    const canvas = this.renderer.getCanvas();
+    const activeObject = canvas?.getActiveObject();
+    if (!canvas || !activeObject) {
+      return;
+    }
+
+    activeObject.clone().then((clone) => {
+      clone.set({
+        left: (clone.left ?? 0) + 20,
+        top: (clone.top ?? 0) + 20,
+      });
+      this.renderer.extend(clone as any, this.renderer.randomId());
+      canvas.add(clone);
+      // Use the facade's selectItemAfterAdded so commands and selection
+      // bookkeeping keep going through the same surface.
+      this.editorCanvasService.selectItemAfterAdded(clone as any);
+    });
+  }
+
+  /**
+   * Copies all active objects into the in-memory clipboard. Pastes happen via
+   * {@link pasteClipboard}.
+   */
+  copySelected(): void {
+    const canvas = this.renderer.getCanvas();
+    const activeObjects = canvas?.getActiveObjects();
+    if (!canvas || !activeObjects || activeObjects.length === 0) {
+      return;
+    }
+
+    this.clipboard = [];
+    Promise.all(activeObjects.map((obj) => obj.clone())).then((clones) => {
+      this.clipboard = clones;
+    });
+  }
+
+  /**
+   * Pastes the contents of the in-memory clipboard onto the canvas, offset
+   * by (+20, +20) so the user can see the new objects. Pushes an undo
+   * snapshot first so the paste is undoable.
+   */
+  pasteClipboard(): void {
+    const canvas = this.renderer.getCanvas();
+    if (!canvas || this.clipboard.length === 0) {
+      return;
+    }
+
+    this.undoRedo.pushSnapshotSync();
+    const newObjects: any[] = [];
+
+    this.clipboard.forEach((clone) => {
+      clone.set({
+        left: (clone.left ?? 0) + 20,
+        top: (clone.top ?? 0) + 20,
+      });
+      this.renderer.extend(clone, this.renderer.randomId());
+      canvas.add(clone);
+      newObjects.push(clone);
+    });
+
+    if (newObjects.length === 1) {
+      canvas.setActiveObject(newObjects[0]);
+    } else if (newObjects.length > 1) {
+      const selection = new ActiveSelection(newObjects, { canvas });
+      canvas.setActiveObject(selection);
+    }
+    canvas.requestRenderAll();
+    this.editorCanvasService.touchRevision();
+  }
+
   // ============================================================
   // Multi-selection alignment
   //
-  // The actual geometric calculation is performed by
-  // `EditorCanvasService.alignSelectedObjects`; this service exposes
-  // semantic wrappers (`alignLeft`, `alignCenter`, `alignRight`,
-  // `alignTop`, `alignMiddle`, `alignBottom`) so the public API matches
-  // the user-facing toolbar buttons.
+  // The alignment geometry is computed inline (no separate sub-service);
+  // OperationsService is the natural home for "what happens when the user
+  // presses the align-left button."
   // ============================================================
 
   alignLeft(): void {
-    this.editorCanvasService.alignSelectedObjects('left');
+    this.alignSelectedObjects('left');
   }
 
   alignCenter(): void {
-    this.editorCanvasService.alignSelectedObjects('center');
+    this.alignSelectedObjects('center');
   }
 
   alignRight(): void {
-    this.editorCanvasService.alignSelectedObjects('right');
+    this.alignSelectedObjects('right');
   }
 
   alignTop(): void {
-    this.editorCanvasService.alignSelectedObjects('top');
+    this.alignSelectedObjects('top');
   }
 
   alignMiddle(): void {
-    this.editorCanvasService.alignSelectedObjects('middle');
+    this.alignSelectedObjects('middle');
   }
 
   alignBottom(): void {
-    this.editorCanvasService.alignSelectedObjects('bottom');
+    this.alignSelectedObjects('bottom');
+  }
+
+  alignSelectedObjects(direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'): void {
+    const canvas = this.renderer.getCanvas();
+    const objects = canvas?.getActiveObjects();
+    if (!canvas || !objects || objects.length === 0) return;
+
+    // Get canvas dimensions for page-based alignment
+    const canvasWidth = canvas.width ?? 0;
+    const canvasHeight = canvas.height ?? 0;
+
+    // Normalize all objects to have originX='left' and originY='top'
+    // while preserving their visual position
+    objects.forEach((obj) => {
+      const currentLeft = obj.left ?? 0;
+      const currentTop = obj.top ?? 0;
+      const width = (obj.width ?? 0) * (obj.scaleX ?? 1);
+      const height = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+      // Calculate visual left/top based on current origin
+      const visualLeft =
+        obj.originX === 'center'
+          ? currentLeft - width / 2
+          : obj.originX === 'right'
+            ? currentLeft - width
+            : currentLeft;
+      const visualTop =
+        obj.originY === 'center'
+          ? currentTop - height / 2
+          : obj.originY === 'bottom'
+            ? currentTop - height
+            : currentTop;
+
+      obj.set({
+        originX: 'left',
+        originY: 'top',
+        left: visualLeft,
+        top: visualTop,
+      });
+      obj.setCoords();
+    });
+
+    // Calculate actual bounds for each object
+    const objectData = objects.map((obj) => {
+      const left = obj.left ?? 0;
+      const top = obj.top ?? 0;
+      const width = (obj.width ?? 0) * (obj.scaleX ?? 1);
+      const height = (obj.height ?? 0) * (obj.scaleY ?? 1);
+      return { obj, left, top, width, height };
+    });
+
+    // Calculate bounding extremes from selected objects
+    const minLeft = Math.min(...objectData.map((d) => d.left));
+    const maxRight = Math.max(...objectData.map((d) => d.left + d.width));
+    const minTop = Math.min(...objectData.map((d) => d.top));
+    const maxBottom = Math.max(...objectData.map((d) => d.top + d.height));
+
+    // Calculate target bounds - use canvas/page for alignment reference
+    let targetLeft: number, targetRight: number, targetTop: number, targetBottom: number;
+    let targetCenterX: number, targetCenterY: number;
+
+    if (objects.length === 1) {
+      // Single selection: align to canvas/page
+      targetLeft = 0;
+      targetRight = canvasWidth;
+      targetTop = 0;
+      targetBottom = canvasHeight;
+      targetCenterX = canvasWidth / 2;
+      targetCenterY = canvasHeight / 2;
+    } else {
+      // Multi-selection: align to bounding box of selected objects
+      targetLeft = minLeft;
+      targetRight = maxRight;
+      targetTop = minTop;
+      targetBottom = maxBottom;
+      targetCenterX = (minLeft + maxRight) / 2;
+      targetCenterY = (minTop + maxBottom) / 2;
+    }
+
+    // Calculate new positions
+    const newPositions: Map<any, { left?: number; top?: number }> = new Map();
+    for (const data of objectData) {
+      const newPos: { left?: number; top?: number } = {};
+      switch (direction) {
+        case 'left':
+          newPos.left = targetLeft;
+          break;
+        case 'center':
+          newPos.left = targetCenterX - data.width / 2;
+          break;
+        case 'right':
+          newPos.left = targetRight - data.width;
+          break;
+        case 'top':
+          newPos.top = targetTop;
+          break;
+        case 'middle':
+          newPos.top = targetCenterY - data.height / 2;
+          break;
+        case 'bottom':
+          newPos.top = targetBottom - data.height;
+          break;
+      }
+      newPositions.set(data.obj, newPos);
+    }
+
+    // Apply all position changes at once
+    for (const data of objectData) {
+      const newPos = newPositions.get(data.obj);
+      if (newPos) {
+        data.obj.set(newPos);
+      }
+    }
+
+    // Update coordinates and render
+    objects.forEach((obj) => obj.setCoords());
+    canvas.requestRenderAll();
+    this.editorCanvasService.touchRevision();
+  }
+
+  distributeSelectedObjects(direction: 'horizontal' | 'vertical'): void {
+    const canvas = this.renderer.getCanvas();
+    const objects = canvas?.getActiveObjects();
+    if (!canvas || !objects || objects.length < 3) return;
+
+    // Normalize all objects to originX='left' and originY='top' first
+    objects.forEach((obj) => {
+      const currentLeft = obj.left ?? 0;
+      const currentTop = obj.top ?? 0;
+      const scaleX = obj.scaleX ?? 1;
+      const scaleY = obj.scaleY ?? 1;
+      const width = (obj.width ?? 0) * scaleX;
+      const height = (obj.height ?? 0) * scaleY;
+
+      // Calculate visual left/top based on current origin
+      const visualLeft =
+        obj.originX === 'center'
+          ? currentLeft - width / 2
+          : obj.originX === 'right'
+            ? currentLeft - width
+            : currentLeft;
+      const visualTop =
+        obj.originY === 'center'
+          ? currentTop - height / 2
+          : obj.originY === 'bottom'
+            ? currentTop - height
+            : currentTop;
+
+      // Set origin to left/top
+      obj.set({
+        originX: 'left',
+        originY: 'top',
+      });
+
+      // Keep the same visual position using calculated visual values
+      obj.set({
+        left: visualLeft,
+        top: visualTop,
+      });
+      obj.setCoords();
+    });
+
+    // Now get bounds after normalization
+    interface ObjData {
+      obj: any;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    }
+    const objectData: ObjData[] = objects.map((obj) => ({
+      obj,
+      left: obj.left ?? 0,
+      top: obj.top ?? 0,
+      width: (obj.width ?? 0) * (obj.scaleX ?? 1),
+      height: (obj.height ?? 0) * (obj.scaleY ?? 1),
+    }));
+
+    // Sort objects along the axis
+    const sorted = [...objectData].sort((a, b) =>
+      direction === 'horizontal' ? a.left - b.left : a.top - b.top,
+    );
+
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    const firstEdge = direction === 'horizontal' ? first.left : first.top;
+    const lastEdge = direction === 'horizontal' ? last.left + last.width : last.top + last.height;
+    const totalSpace = lastEdge - firstEdge;
+    const totalSize = sorted.reduce(
+      (sum, d) => (direction === 'horizontal' ? sum + d.width : sum + d.height),
+      0,
+    );
+    const availableSpace = totalSpace - totalSize;
+    const gap = availableSpace / (sorted.length - 1);
+
+    let currentEdge = firstEdge + (direction === 'horizontal' ? first.width : first.height) + gap;
+    for (let i = 1; i < sorted.length - 1; i++) {
+      const data = sorted[i];
+      if (direction === 'horizontal') {
+        data.obj.set({ left: currentEdge });
+      } else {
+        data.obj.set({ top: currentEdge });
+      }
+      currentEdge += (direction === 'horizontal' ? data.width : data.height) + gap;
+      data.obj.setCoords();
+    }
+
+    canvas.requestRenderAll();
+    this.editorCanvasService.touchRevision();
   }
 
   // ============================================================
@@ -138,26 +428,24 @@ export class OperationsService {
   // ============================================================
 
   bringSelectionToFront(): void {
-    const activeObjects = this.renderer.getCanvas()?.getActiveObjects() ?? [];
-    if (!this.renderer.getCanvas() || !activeObjects.length) {
+    const canvas = this.renderer.getCanvas();
+    const activeObjects = canvas?.getActiveObjects() ?? [];
+    if (!canvas || !activeObjects.length) {
       return;
     }
 
-    activeObjects.forEach((object) =>
-      this.renderer.getCanvas()?.bringObjectToFront(object),
-    );
-    this.renderer.getCanvas()?.requestRenderAll();
+    activeObjects.forEach((object) => canvas.bringObjectToFront(object));
+    canvas.requestRenderAll();
   }
 
   sendSelectionToBack(): void {
-    const activeObjects = this.renderer.getCanvas()?.getActiveObjects() ?? [];
-    if (!this.renderer.getCanvas() || !activeObjects.length) {
+    const canvas = this.renderer.getCanvas();
+    const activeObjects = canvas?.getActiveObjects() ?? [];
+    if (!canvas || !activeObjects.length) {
       return;
     }
 
-    activeObjects.forEach((object) =>
-      this.renderer.getCanvas()?.sendObjectToBack(object),
-    );
-    this.renderer.getCanvas()?.requestRenderAll();
+    activeObjects.forEach((object) => canvas.sendObjectToBack(object));
+    canvas.requestRenderAll();
   }
 }
