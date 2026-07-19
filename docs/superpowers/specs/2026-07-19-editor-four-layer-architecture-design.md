@@ -316,6 +316,242 @@ If we keep the JSON snapshot approach, future undo-by-replay is harder.
 - Wire format (`LabelTemplate` JSON) is byte-compatible.
 - 7-file preservation invariant (set in the previous refactor's ledger) continues to hold for any future work.
 
+## Deep Dive: Cycle Guard, Undo Fix, Failure Modes, Phase 0 Tests
+
+These four sub-sections address the architect-level concerns about the cycle guard, the undo bug, and migration safety. They are **design refinements** — not new requirements. Implementation should adopt them from Phase 1 onwards.
+
+### Cycle guard: replace `boolean` with `syncDirection: signal<'idle' | 'doc-to-fabric' | 'fabric-to-doc'>`
+
+**Current problem.** The `isApplyingFromDoc` boolean flag is a fragile synchronization primitive. Two failure modes:
+
+1. **Lost flag → infinite loop.** If `obj.set()` inside `applyElementsFromDoc` throws, the `finally` block resets the flag — but the throw exits the normal control flow, so the next Fabric event may no longer be swallowed, creating a write loop.
+2. **Hidden control flow.** A developer reading `handleObjectModified` cannot tell from the code *why* a Fabric event is being skipped. They must know about the flag's existence and semantics.
+
+**Proposed design.** Replace the boolean with a tri-state signal whose **value** is the synchronization source:
+
+```ts
+// render/fabric-renderer.ts (or wherever the cycle guard currently lives)
+private readonly syncDirection = signal<'idle' | 'doc-to-fabric' | 'fabric-to-doc'>('idle');
+
+constructor() {
+  // doc → fabric direction
+  effect(() => {
+    const elements = this.doc.elements();
+    if (this.syncDirection() === 'fabric-to-doc') return;
+    untracked(() => {
+      this.syncDirection.set('doc-to-fabric');
+      try {
+        this.applyElements(elements);
+      } finally {
+        this.syncDirection.set('idle');
+      }
+    });
+  });
+
+  // fabric → doc direction: routed through the same flag by the event handler
+}
+
+private handleFabricModification(object: any): void {
+  if (this.syncDirection() !== 'idle') return;  // any in-flight sync suppresses echo
+  this.syncDirection.set('fabric-to-doc');
+  try {
+    this.doc.updateElement(this.getObjectId(object), this.extractPatch(object));
+  } finally {
+    this.syncDirection.set('idle');
+  }
+}
+```
+
+**Why this is better than the boolean:**
+
+- **Race visibility:** when a Fabric event arrives mid-`doc-to-fabric` sync, the value reads `'doc-to-fabric'`, not just "true". A debugger breakpoint on the read makes the suppression obvious.
+- **Impossible states are encoded:** the signal has three valid values; "in two directions at once" is impossible because writes go through `'idle'` as the gate.
+- **Same test surface:** the same fabric-event → doc-update → effect → fabric-update → no-echo cycle that the boolean guards against is what the tri-state guards against. No test rewrite needed; just clearer semantics.
+
+**Trade-off acknowledged:** the tri-state is *slightly* more code. For a system with one Fabric canvas and one model, this is overkill. For a system with multiple canvases (multi-preview, split view, etc.), it's necessary. We're preparing for the second scenario without paying much in the first.
+
+### Undo fix: atomic snapshot + Fabric-id reconciliation
+
+The known bug — canvas ↔ doc diverge after undo — has two root causes, both addressed here.
+
+**Root cause 1: snapshot is canvas-only.**
+
+Current `pushUndoSnapshot` stores only `canvas.toJSON()`. After `loadFromJSON`, the canvas reflects the old state but `LabelDocumentService.elements` still holds the post-state (because Fabric drag events wrote to it). The two states diverge.
+
+**Root cause 2: Fabric regenerates ids.**
+
+When `loadFromJSON` reconstructs objects, Fabric creates new JS object instances. If those objects retain their `id` (via the `toObject` extension we added), `doc.elements` can match by id. **But if the user added an element between two snapshots**, after undo that element is in `doc.elements` but not in the canvas — and vice versa for a redo. The doc/canvas never converge.
+
+**Proposed design.**
+
+```ts
+// model/label-document.service.ts (new mutations)
+interface LabelDocumentSnapshot {
+  page: LabelPageSettings;
+  elements: ReadonlyMap<string, LabelElement>;
+  selectionId: string | null;
+}
+
+setElements(elements: ReadonlyMap<string, LabelElement>): void;
+setSelectionId(id: string | null): void;
+setPage(page: LabelPageSettings): void;
+snapshot(): LabelDocumentSnapshot;
+restore(snapshot: LabelDocumentSnapshot): void;
+```
+
+```ts
+// editor/undo-redo.service.ts (replaces the current snapshot stack)
+interface EditorSnapshot {
+  canvasJson: string;
+  docSnapshot: LabelDocumentSnapshot;
+}
+
+private undoStack: EditorSnapshot[] = [];
+private redoStack: EditorSnapshot[] = [];
+
+execute(command: EditorCommand): Promise<void> {
+  const before = this.takeSnapshot();
+  this.redoStack.length = 0;
+  await command.execute();
+  // after: implicit (Fabric events already wrote to doc via handleFabricModification)
+  // no need to push after — undo just needs the *before* state
+  this.undoStack.push(before);
+  this.syncSignals();
+}
+
+undo(): Promise<void> {
+  if (this.undoStack.length === 0) return;
+  const current = this.takeSnapshot();
+  const target = this.undoStack.pop()!;
+
+  // 1. Restore doc FIRST (atomic mutation; no echo back)
+  this.doc.restore(target.docSnapshot);
+  this.renderer.syncDirection.set('doc-to-fabric');
+
+  // 2. Load canvas (will trigger object:added events, all swallowed by syncDirection)
+  await this.renderer.fromJsonBlob(JSON.parse(target.canvasJson));
+
+  // 3. Reset guard
+  this.renderer.syncDirection.set('idle');
+
+  this.redoStack.push(current);
+  this.syncSignals();
+}
+
+private takeSnapshot(): EditorSnapshot {
+  return {
+    canvasJson: JSON.stringify(this.renderer.toJsonBlob()),
+    docSnapshot: this.doc.snapshot(),
+  };
+}
+```
+
+**Critical detail — the `syncDirection` guard is set *across the entire* `fromJsonBlob` call.** This is why the tri-state (above) matters: the boolean flag was set inside `applyElementsFromDoc` only, but the load-from-JSON path is *separate* and needs the same guard. With `syncDirection` as a single shared signal, both `applyElementsFromDoc` and `loadFromJSON` flip it the same way.
+
+**Reconciliation for new Fabric ids.** If `loadFromJSON` regenerates an object without the original id (shouldn't happen given our `extend`/`extendWithCustomProperties` work, but defensively): after load, walk `canvas.getObjects()`, build a Map<id, FabricObject>, and re-issue `doc.setElements()` from the snapshot — but replace ids with whatever Fabric assigned. This is the "last-resort reconciliation" branch; should only fire if the `extend()` chain breaks.
+
+### Failure modes per phase (Strangler Fig safety net)
+
+If implementation pauses mid-phase, the codebase must remain buildable and runnable. Each phase below lists what works, what's partial, and what's broken if stopped mid-flight.
+
+**Phase 1 (render layer extraction) — partial stop acceptable.**
+
+- Working: `RenderContext` interface unchanged at the import sites; `getRenderContext()` still returns the same shape. `fabric-renderer.ts` is a new file but is referenced only via `EditorCanvasService.getRenderContext()` which is the only call site.
+- Partial (acceptable): old methods (`createPlaceholderDataUrl`, `randomId`, etc.) still on `EditorCanvasService` until all callers migrate. `fabric-renderer.ts` is the new home; both can coexist.
+- Broken if stopped: nothing. The new service can be removed without affecting the old code paths.
+
+**Phase 2 (undo fix) — partial stop acceptable.**
+
+- Working: snapshot data is now `EditorSnapshot` (4 fields instead of 1). If stopped after only adding the type but not the `restore()` flow, undo still uses the old `canvasJson`-only stack — no regression.
+- Broken if stopped: only if `restore()` is wired into `undo()` but the cycle guard isn't updated. Then `loadFromJSON` events would write back to doc, re-introducing the divergence.
+
+**Phase 3 (selection service) — partial stop acceptable.**
+
+- Working: `handleSelection` and the selection signals move to a new service. `EditorCanvasService` proxies to it. If stopped, both old and new code paths coexist.
+- Broken if stopped: only the `selected` signal is now in two places. Resolution: keep `EditorCanvasService.selected` as the public read API, have it delegate to the new service.
+
+**Phase 4 (operations service) — partial stop acceptable.**
+
+- Working: alignLeft, clone, rotate, etc. become service methods. Topbar buttons call the service instead of canvas service.
+- Broken if stopped: only the cycle guard — if `OperationsService` writes back via `doc.updateElement`, the existing `applyElementsFromDoc` needs to be cycle-guarded *correctly*. The tri-state signal fixes this; if you skipped the tri-state, you have race conditions.
+
+**Phase 5 (persistence layer) — partial stop acceptable.**
+
+- Working: storage backend renamed and relocated; converter extracted. `editor.ts:buildLabelTemplate` becomes a one-liner.
+- Broken if stopped: nothing — this layer has no cycle dependencies.
+
+**Phase 6 (cleanup) — DO NOT pause mid-flight.**
+
+- Working: `elementRegistry` is gone. `doc.elements` is the single source.
+- Broken if stopped: every `elementRegistry.get(id)` call site breaks. There are dozens. Plan to land Phase 6 atomically (single commit) or in sub-phases (selection first, then operations, then commands).
+
+### Phase 0: integration tests as safety net
+
+**Before any code change**, land this commit:
+
+```ts
+// src/app/editor/__tests__/editor-flow.spec.ts
+describe('Canvas ↔ Doc round-trip', () => {
+  it('add → drag → undo returns both canvas and doc to add-pre state', async () => {
+    // Setup: empty canvas
+    // Action: add rect, drag right by 50px
+    // Assert: doc.elements has 1 element with new x; canvas has 1 rect at new x
+    // Action: undo
+    // Assert: doc.elements is empty; canvas is empty
+  });
+
+  it('add → undo → redo restores exact state (id, geometry)', async () => {
+    // Action: add rect, drag to (100, 100)
+    // Action: undo (doc and canvas both empty)
+    // Action: redo
+    // Assert: doc.elements has the same id as before; geometry matches
+  });
+
+  it('add → drag → undo → add different element → redo does not re-add first', async () => {
+    // Action: add rect A, drag
+    // Action: undo (state: empty)
+    // Action: add rect B
+    // Action: redo
+    // Assert: doc.elements contains ONLY rect B; canvas shows only rect B
+    // (This is the user-reported bug: "新增元素消失了")
+  });
+
+  it('delete → undo restores element with correct id', async () => {
+    // Action: add rect, delete selected
+    // Action: undo
+    // Assert: doc.elements contains the rect again; canvas shows it
+  });
+
+  it('multi-select → drag → undo restores both elements to original positions', async () => {
+    // Action: add 2 rects, drag both
+    // Action: undo
+    // Assert: both rects back to original positions; doc.elements geometry matches
+  });
+});
+```
+
+These tests are the **safety net** that makes every other phase safe to land. They will catch:
+
+- The current undo bug (regression-tested)
+- Any future cycle-guard bug (regression-tested)
+- Any state-divergence between canvas and doc (regression-tested)
+
+**Effort estimate for Phase 0: 2-3 hours**, dominated by test setup. Pay it once, before the four-layer refactor begins.
+
+### Migration order revised with Phase 0
+
+The earlier suggestion (Pilot: Render layer first) was correct in isolation but skipped Phase 0. Revised:
+
+0. **Phase 0** — integration tests for canvas ↔ doc round-trip (~2-3 hours)
+1. **Phase 1** — render layer extraction (~5 commits)
+2. **Phase 2** — undo fix (snapshot 4 fields + tri-state guard) (~3 commits)
+3. **Phase 3** — selection service (~3 commits)
+4. **Phase 4** — operations service (~3 commits)
+5. **Phase 5** — persistence layer rename + extraction (~4 commits)
+6. **Phase 6** — cleanup (delete `elementRegistry`, simplify `editor.ts`) (~2 commits)
+
+Total: ~20 commits + 1 Phase 0 commit. Phase 0 should land first; if implementation pauses after Phase 0 but before Phase 1, the only thing lost is 2-3 hours of test work. **Phase 0 is the safest possible commit** — it's pure additions, no behavior change.
+
 ## Open Questions
 
 1. Should `render/render-context.ts` exist as a separate file, or stay inside `model/element-base.ts`? **Recommendation:** keep inside `model/element-base.ts` to minimize model-side churn. Re-evaluate at implementation time.
