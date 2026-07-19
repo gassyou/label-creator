@@ -1,6 +1,7 @@
 // src/app/editor/models/barcode-element.ts
 import { FabricImage, type FabricObject } from 'fabric';
 import { BaseElement, type RenderContext } from './element-base';
+import { buildPlaceholderDataUrl } from './placeholder-svg';
 
 export type BarcodeFormat = 'CODE128' | 'EAN13' | 'EAN8' | 'UPC' | 'CODE39';
 
@@ -38,18 +39,17 @@ export class BarcodeElement extends BaseElement {
   }
 
   async render(ctx: RenderContext): Promise<FabricObject> {
-    const dataUrl = (ctx as any).createPlaceholderDataUrl?.('BC', this.width, this.height)
-      ?? `data:image/svg+xml;utf8,${encodeURIComponent(
-          `<svg xmlns='http://www.w3.org/2000/svg' width='${this.width}' height='${this.height}'><rect width='100%' height='100%' fill='#fff'/><text x='50%' y='50%' text-anchor='middle' dy='.3em' font-size='12' fill='#999'>BC</text></svg>`
-        )}`;
+    const dataUrl = buildPlaceholderDataUrl('BC', this.width, this.height);
     const img = await FabricImage.fromURL(dataUrl);
+
+    // Fabric 默认会保持原图宽高比。让 placeholder 永远填满整个框（允许拉伸）。
     img.set({
       left: this.x, top: this.y,
-      width: this.width, height: this.height,
-      scaleX: 1, scaleY: 1,
       originX: 'left', originY: 'top',
       hasRotatingPoint: true
     });
+    img.scaleToWidth(this.width);
+    img.scaleToHeight(this.height);
     (img as any).elementType = 'barcode';
     (img as any).bindingValue = this.binding ?? this.value ?? '';
     (img as any).barcodeFormat = this.format;

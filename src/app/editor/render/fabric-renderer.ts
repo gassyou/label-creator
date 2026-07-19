@@ -6,7 +6,7 @@
  *  - The doc → fabric reconciliation (applyElementsFromDoc / applyPageFromDoc)
  *  - The tri-state `syncDirection` cycle guard
  *  - Render helpers exposed via {@link RenderContext} (`randomId`, `extend`,
- *    `extendWithCustomProperties`, `createPlaceholderDataUrl`)
+ *    `extendWithCustomProperties`)
  *
  * Does NOT own:
  *  - Selection state (Phase 3 → SelectionService)
@@ -92,6 +92,31 @@ export class FabricRenderer {
     if (obj.get(key) !== value) {
       obj.set(key, value);
     }
+  }
+
+  /**
+   * Returns the image's natural pixel size from a Fabric object, falling
+   * back across Fabric API versions. Used to derive scaleX/Y so that
+   * `width * scaleX == targetVisualWidth` holds regardless of how many
+   * times `set('width', …)` was called before (each call drifts
+   * `obj.width` away from the natural pixel size, which makes
+   * `scaleToWidth` compute the wrong scale).
+   */
+  private readNaturalSize(obj: any): { naturalW: number; naturalH: number } {
+    const fromOriginal =
+      typeof obj.getOriginalSize === 'function' ? obj.getOriginalSize() : null;
+    if (fromOriginal && fromOriginal.width > 0 && fromOriginal.height > 0) {
+      return { naturalW: fromOriginal.width, naturalH: fromOriginal.height };
+    }
+    const el = obj._element as HTMLImageElement | HTMLCanvasElement | undefined;
+    if (el && (el as any).naturalWidth > 0 && (el as any).naturalHeight > 0) {
+      return {
+        naturalW: (el as any).naturalWidth,
+        naturalH: (el as any).naturalHeight,
+      };
+    }
+    // Last resort: trust current width/height. Caller guards against <= 0.
+    return { naturalW: obj.width ?? 0, naturalH: obj.height ?? 0 };
   }
 
   constructor() {
@@ -453,8 +478,36 @@ export class FabricRenderer {
         if (anyData['height'] !== undefined) track('height', anyData['height']);
         // After geometry changes reset scale so width/height are visual.
         if (anyData['width'] !== undefined || anyData['height'] !== undefined) {
-          track('scaleX', 1);
-          track('scaleY', 1);
+          // Image-backed elements (image / qrcode / barcode): Fabric's
+          // FabricImage renders as `width * scaleX`. Resetting scale to 1
+          // would leave the placeholder stretched/cropped because
+          // `set('width', …)` mutates the underlying pixel width without
+          // resampling. Re-derive scale from the image's natural size so
+          // the rendered size matches the doc width/height exactly.
+          if (t === 'image' || t === 'qrcode' || t === 'barcode') {
+            // Fabric renders FabricImage as `width * scaleX`. After repeated
+            // set('width', …) calls the field no longer matches the image's
+            // natural pixel size, so scaleToWidth(target) returns the wrong
+            // scaleX (= target / drifted_width). Compute scale from the
+            // image's natural size directly and reset width/height back to
+            // natural so the relationship `width * scaleX == target` holds
+            // on every call (idempotent for repeated resize to the same
+            // dimensions).
+            const { naturalW, naturalH } = this.readNaturalSize(obj);
+            if (anyData['width'] !== undefined && naturalW > 0) {
+              const target = anyData['width'] as number;
+              track('width', naturalW);
+              track('scaleX', target / naturalW);
+            }
+            if (anyData['height'] !== undefined && naturalH > 0) {
+              const target = anyData['height'] as number;
+              track('height', naturalH);
+              track('scaleY', target / naturalH);
+            }
+          } else {
+            track('scaleX', 1);
+            track('scaleY', 1);
+          }
         }
 
         if (t === 'text') {
@@ -610,27 +663,6 @@ export class FabricRenderer {
         showText: this.showText,
       };
     };
-  }
-
-  /**
-   * Generates a small gray placeholder PNG data URL used as the initial image
-   * for barcode/qrcode elements before any binding value is rendered. Exposed
-   * via RenderContext so elements can call it during render().
-   */
-  createPlaceholderDataUrl(text: string, w: number, h: number): string {
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = '#999';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(text, w / 2, h / 2);
-    }
-    return canvas.toDataURL('image/png');
   }
 
   /**
