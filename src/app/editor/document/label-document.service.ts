@@ -8,6 +8,22 @@ import {
 import { DEFAULT_PAGE_SETTINGS, type LabelPageSettings } from './label-document';
 
 /**
+ * Atomic snapshot of the document's three signals. Used by undo/redo to
+ * restore page/elements/selection in a single batch — keeping consumers
+ * (and the Fabric effect) coherent across the restore.
+ *
+ * Field semantics mirror the corresponding signals:
+ *  - `page`: the current page settings (size, background)
+ *  - `elements`: full element map keyed by element id
+ *  - `selectionId`: currently-selected element id, or `null` if none
+ */
+export interface LabelDocumentSnapshot {
+  page: LabelPageSettings;
+  elements: ReadonlyMap<string, LabelElement>;
+  selectionId: string | null;
+}
+
+/**
  * Runtime central model. Single source of truth for the editor's editing
  * state. Observed by both `EditorCanvasService` (Fabric adapter) and the
  * property panels via signals + `effect`.
@@ -94,6 +110,38 @@ export class LabelDocumentService {
 
   selectElement(id: string | null): void {
     this.selectionId.set(id);
+  }
+
+  // ----- atomic snapshot / restore (Phase 2: undo fix) -----
+
+  /**
+   * Captures an atomic snapshot of the document's three signals
+   * (page / elements / selectionId). The caller may mutate the document
+   * freely after this; the returned snapshot is detached from the live
+   * signals but its `elements` map still shares references with the live
+   * element data (so the snapshot reflects the values at call time).
+   */
+  snapshot(): LabelDocumentSnapshot {
+    return {
+      page: this.page(),
+      elements: this.elements(),
+      selectionId: this.selectionId(),
+    };
+  }
+
+  /**
+   * Restores the document to a previously-taken {@link LabelDocumentSnapshot}
+   * in a single batch. All three signals are written via `.set(...)` so
+   * downstream `effect`s fire exactly once per signal — this prevents
+   * intermediate "doc has new page but old elements" states from being
+   * observed (e.g. by the Fabric effect during an undo/redo).
+   *
+   * No-op if the snapshot is the live current state (signals already equal).
+   */
+  restore(snap: LabelDocumentSnapshot): void {
+    this.page.set(snap.page);
+    this.elements.set(snap.elements);
+    this.selectionId.set(snap.selectionId);
   }
 
   // ----- internal: ElementState → EditorSelectionState projection -----

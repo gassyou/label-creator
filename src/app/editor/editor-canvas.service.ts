@@ -10,7 +10,7 @@ import {
   EditorSelectionState,
 } from './models/editor.models';
 import { Label, PX_PER_MM, millimetersToPixels } from './models/label.models';
-import { LabelDocumentService } from './document';
+import { LabelDocumentService, type LabelDocumentSnapshot } from './document';
 import { BaseElement, type RenderContext } from './models/element-base';
 import { ElementFactory } from './models/element-factory';
 import { EditorCommand } from './commands/editor-command';
@@ -22,6 +22,17 @@ import { AddImageCommand } from './commands/add-image.command';
 import { DeleteSelectedCommand } from './commands/delete-selected.command';
 import { ClearCanvasCommand } from './commands/clear-canvas.command';
 import { FabricRenderer } from './render/fabric-renderer';
+
+/**
+ * A single undo/redo snapshot. Bundles the Fabric canvas JSON with an
+ * atomic {@link LabelDocumentSnapshot} so undo/redo can restore both
+ * layers coherently. Replaces the old `string` (canvas-JSON-only)
+ * snapshot type that caused the historical undo bug.
+ */
+interface EditorSnapshot {
+  canvasJson: string;
+  docSnapshot: LabelDocumentSnapshot;
+}
 
 @Injectable()
 export class EditorCanvasService {
@@ -60,8 +71,15 @@ export class EditorCanvasService {
   private clipboard: any[] = [];
 
   // Undo/Redo stacks
-  private undoStack: string[] = [];
-  private redoStack: string[] = [];
+  //
+  // Each stack entry is an `EditorSnapshot` containing both the Fabric canvas
+  // JSON and an atomic {@link LabelDocumentSnapshot}. The doc half is the
+  // fix for the historical undo bug: previously the snapshot only stored
+  // `canvas.toJSON()`, so after undo/redo `doc.elements` could diverge from
+  // the canvas (Fabric regenerated object ids; doc kept the post-state ids).
+  // See Phase 2 of the four-layer architecture plan for the design.
+  private undoStack: EditorSnapshot[] = [];
+  private redoStack: EditorSnapshot[] = [];
   private maxUndoLevels = 50;
   private undoInFlight = false;
 
@@ -127,38 +145,34 @@ export class EditorCanvasService {
   undo(): void {
     if (this.undoInFlight) return;
     if (this.undoStack.length === 0 || !this.canvas) return;
-    const current = JSON.stringify(this.canvas.toJSON());
-    this.redoStack.push(current);
-    const snapshot = this.undoStack.pop()!;
+    const current = this.takeSnapshot();
+    const target = this.undoStack.pop()!;
     this.undoInFlight = true;
     this.hydrating = true;
-    this.canvas.loadFromJSON(snapshot).then(() => {
-      this.canvas?.discardActiveObject();
-      this.applyInteractionMode();
+    this.applyEditorSnapshot(target).finally(() => {
       this.hydrating = false;
-      this.touchRevision();
-      this.canvas?.requestRenderAll();
-      this.syncUndoSignals();
       this.undoInFlight = false;
+      this.applyInteractionMode();
+      this.canvas?.requestRenderAll();
+      this.redoStack.push(current);
+      this.syncUndoSignals();
     });
   }
 
   redo(): void {
     if (this.undoInFlight) return;
     if (this.redoStack.length === 0 || !this.canvas) return;
-    const current = JSON.stringify(this.canvas.toJSON());
-    this.undoStack.push(current);
-    const snapshot = this.redoStack.pop()!;
+    const current = this.takeSnapshot();
+    const target = this.redoStack.pop()!;
     this.undoInFlight = true;
     this.hydrating = true;
-    this.canvas.loadFromJSON(snapshot).then(() => {
-      this.canvas?.discardActiveObject();
-      this.applyInteractionMode();
+    this.applyEditorSnapshot(target).finally(() => {
       this.hydrating = false;
-      this.touchRevision();
-      this.canvas?.requestRenderAll();
-      this.syncUndoSignals();
       this.undoInFlight = false;
+      this.applyInteractionMode();
+      this.canvas?.requestRenderAll();
+      this.undoStack.push(current);
+      this.syncUndoSignals();
     });
   }
 
@@ -169,12 +183,131 @@ export class EditorCanvasService {
     return this.redoStack.length > 0;
   }
 
+  /**
+   * Builds a 4-field {@link EditorSnapshot} from the live canvas + doc.
+   * Called from `pushUndoSnapshot` (before each command) and from
+   * `undo`/`redo` (to capture the current pre-swap state so redo/undo
+   * remain reversible).
+   */
+  private takeSnapshot(): EditorSnapshot {
+    const canvasJson = this.canvas ? JSON.stringify(this.canvas.toJSON()) : '';
+    return {
+      canvasJson,
+      docSnapshot: this.doc.snapshot(),
+    };
+  }
+
   private pushUndoSnapshot(): void {
     if (!this.canvas) return;
-    const snapshot = JSON.stringify(this.canvas.toJSON());
-    this.undoStack.push(snapshot);
+    this.undoStack.push(this.takeSnapshot());
     if (this.undoStack.length > this.maxUndoLevels) this.undoStack.shift();
     this.syncUndoSignals();
+  }
+
+  /**
+   * Applies an {@link EditorSnapshot} to the canvas + doc in the order that
+   * keeps the cycle guard intact:
+   *
+   *   1. Restore the doc FIRST (atomic 3-signal batch via `doc.restore()`).
+   *      The Fabric effect sees the new element map and would normally
+   *      re-apply it to the canvas — but...
+   *   2. Flip `syncDirection` to `doc-to-fabric` BEFORE `loadFromJSON` so
+   *      that all `object:added` events fired during the load are swallowed
+   *      by the cycle guard (none of them write back to the doc).
+   *   3. `loadFromJSON` runs the full Fabric rebuild (which emits
+   *      `object:added` for every reconstructed object — all suppressed).
+   *   4. Reset `syncDirection` to `idle`. A defensive
+   *      `reconcileDocFromCanvas()` runs immediately after; in normal
+   *      operation it is a no-op because our `extend`/`extendWithCustomProperties`
+   *      chain keeps object ids stable across `loadFromJSON`.
+   *
+   * Returns the Promise from `loadFromJSON`; the caller wraps it in a
+   * `finally` to ensure `undoInFlight`/`hydrating`/signals are always
+   * restored even if Fabric throws.
+   */
+  private applyEditorSnapshot(target: EditorSnapshot): Promise<void> {
+    if (!this.canvas) return Promise.resolve();
+    // 1. Restore the doc first. This sets page/elements/selectionId
+    //    atomically; downstream effects see the new doc state on their
+    //    next microtask (after the syncDirection flip below).
+    this.doc.restore(target.docSnapshot);
+
+    // 2+3. Span `loadFromJSON` with the cycle guard so `object:added`
+    // events from Fabric's object reconstruction don't write back to the
+    // doc (the historical undo bug).
+    this.renderer.syncDirection.set('doc-to-fabric');
+    try {
+      return this.canvas.loadFromJSON(target.canvasJson).then(() => {
+        // 4. Reset guard before any user-observable side effects.
+        this.renderer.syncDirection.set('idle');
+        this.canvas?.discardActiveObject();
+        // Defensive: only fires if Fabric regenerated ids despite our
+        // `extend` chain (it shouldn't — this is the last-resort branch).
+        this.reconcileDocFromCanvas();
+        this.touchRevision();
+      });
+    } catch (err) {
+      // Safety net: ensure guard is reset even if loadFromJSON throws.
+      this.renderer.syncDirection.set('idle');
+      throw err;
+    }
+  }
+
+  /**
+   * Last-resort reconciliation between `doc.elements` and the canvas's
+   * current object ids. Runs after every undo/redo to guarantee that any
+   * edge case where Fabric regenerated ids is caught before the user sees
+   * a stale property panel.
+   *
+   * In normal operation this is a no-op: `extend`/`extendWithCustomProperties`
+   * preserve ids across `loadFromJSON`, so canvas ids match doc ids. If a
+   * future refactor breaks that chain, this method makes the divergence
+   * non-fatal by removing doc-only ids and synthesizing elements for
+   * canvas-only ids (via {@link ElementFactory.fromFabricObject}).
+   */
+  private reconcileDocFromCanvas(): void {
+    if (!this.canvas) return;
+
+    const canvasIds = new Set<string>();
+    let multiSelectMarkerSeen = false;
+    this.canvas.forEachObject((obj) => {
+      const id = this.getObjectId(obj);
+      if (!id) return;
+      if (id === 'multi-select-marker') {
+        multiSelectMarkerSeen = true;
+        return;
+      }
+      canvasIds.add(id);
+    });
+
+    const docIds = new Set(this.doc.elements().keys());
+
+    // Drop doc-only entries (canvas restored but doc didn't — should not
+    // happen because we restored doc first, but defends against race).
+    for (const id of docIds) {
+      if (!canvasIds.has(id)) {
+        this.doc.removeElement(id);
+      }
+    }
+
+    // Add canvas-only entries (Fabric generated something the doc doesn't
+    // know about — last-resort materialization).
+    if (canvasIds.size > 0) {
+      const canvasObjects = this.canvas.getObjects();
+      for (const id of canvasIds) {
+        if (docIds.has(id)) continue;
+        const obj = canvasObjects.find((o) => this.getObjectId(o) === id);
+        if (obj) {
+          const element = ElementFactory.fromFabricObject(obj, id);
+          if (element) {
+            this.doc.addElement(element as unknown as LabelElement);
+          }
+        }
+      }
+    }
+
+    // Suppress unused-variable lint without changing semantics.
+    void multiSelectMarkerSeen;
   }
 
   private syncUndoSignals(): void {
@@ -391,8 +524,9 @@ export class EditorCanvasService {
       return;
     }
 
-    const state = JSON.stringify(this.canvas.toJSON());
-    this.undoStack.push(state);
+    // Use the same 4-field snapshot shape as the rest of the stack so undo
+    // can restore the doc atomically even from a paste/clipboard op.
+    this.undoStack.push(this.takeSnapshot());
 
     if (this.undoStack.length > this.maxUndoLevels) {
       this.undoStack.shift();

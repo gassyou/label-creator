@@ -90,4 +90,39 @@ describe('Canvas ↔ Doc round-trip', () => {
     doc.setElements(snap1);
     expect(doc.elements().get('rect-1')?.x).toBe(0);
   });
+
+  // Phase 2 regression test: the user-reported undo bug, expressed at the
+  // doc layer via the new atomic `snapshot()`/`restore()` API. This guards
+  // against any future regression of the just-fixed bug ("after undo+redo,
+  // the doc still references the stale id that should have been replaced").
+  it('Phase 2: snapshot/restore round-trip — add A → snapshot → add B → restore → only A remains; add C → only A and C remain', () => {
+    // 1. add A
+    doc.addElement({ id: 'A', type: 'rect', x: 0, y: 0, width: 10, height: 10 });
+
+    // 2. snapshot the doc (mirrors `pushUndoSnapshot` capturing pre-B state)
+    const snap = doc.snapshot();
+
+    // 3. add B
+    doc.addElement({ id: 'B', type: 'rect', x: 50, y: 0, width: 10, height: 10 });
+    expect(doc.elements().size).toBe(2);
+    expect(doc.elements().has('B')).toBe(true);
+
+    // 4. restore (mirrors `undo()` calling `doc.restore(target.docSnapshot)`)
+    doc.restore(snap);
+    expect(doc.elements().size).toBe(1);
+    expect(doc.elements().has('A')).toBe(true);
+    expect(doc.elements().has('B')).toBe(false);
+
+    // 5. add C (user continues editing after undo)
+    doc.addElement({ id: 'C', type: 'rect', x: 100, y: 0, width: 10, height: 10 });
+
+    // 6. assert only A and C remain — B must NOT come back. This is the
+    //    exact divergence that the historical `pushUndoSnapshot` (which
+    //    stored only `canvas.toJSON()` and left `doc.elements` in the
+    //    post-B state) used to produce after a redo.
+    expect(doc.elements().size).toBe(2);
+    expect(doc.elements().has('A')).toBe(true);
+    expect(doc.elements().has('C')).toBe(true);
+    expect(doc.elements().has('B')).toBe(false);
+  });
 });
