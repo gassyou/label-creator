@@ -520,18 +520,85 @@ export class FabricRenderer {
         }
 
         if (t === 'text') {
-          if (anyData['text'] !== undefined) track('text', anyData['text']);
-          if (anyData['fontSize'] !== undefined) track('fontSize', anyData['fontSize']);
-          if (anyData['fontFamily'] !== undefined)
-            track('fontFamily', anyData['fontFamily']);
-          if (anyData['fontWeight'] !== undefined)
-            track('fontWeight', anyData['fontWeight']);
-          if (anyData['fontStyle'] !== undefined)
-            track('fontStyle', anyData['fontStyle']);
+          // textAlign is line-level only (no per-char overlay), so updating
+          // it via `set('textAlign', ...)` is sufficient — no need to touch
+          // the styles[] array.
           if (anyData['textAlign'] !== undefined)
             track('textAlign', anyData['textAlign']);
-          if (anyData['textDecoration'] !== undefined)
-            track('textDecoration', anyData['textDecoration']);
+
+          // PHASE 21 FIX: font / decoration / color properties are NOT just
+          // object-level — Fabric.js Text stores per-character overrides in
+          // its `styles[]` array (a 2D table of per-grapheme style overlays).
+          // At render time, `getCompleteStyleDeclaration(line, char)` spreads
+          // the outer properties FIRST and then merges the per-char style on
+          // top, so a stale per-char entry (e.g. `fontSize: 22` from when
+          // the element was first added) silently overrides a freshly-set
+          // outer `fontSize: 15`. The property panel was reporting the new
+          // value because the doc state had been updated, but the canvas
+          // kept showing the old one. To make outer-level changes "win",
+          // after `set(prop, value)` we mirror the same value into every
+          // per-char style in [0, text.length), then call Fabric's
+          // `cleanStyle(prop)` to drop redundant per-char entries (it deletes
+          // a per-char entry only when ALL chars share the same value AND
+          // it equals the outer — which is exactly what we just produced).
+          //
+          // Without this, font size, font family, font weight, font style,
+          // underline / overline / linethrough, fill, stroke, and strokeWidth
+          // are all read-only on the canvas for any element that has a
+          // non-empty `styles[]` overlay (which is the common case after
+          // loadFromJSON — Fabric seeds the overlay during initDimensions).
+          //
+          // Order matters: apply `text` FIRST (if present) so the styles
+          // array length matches the final text length before we overlay
+          // the style-affecting properties.
+          if (anyData['text'] !== undefined) track('text', anyData['text']);
+
+          const textLen =
+            typeof setObj.text === 'string' ? setObj.text.length : 0;
+          const overlayProp = (prop: string, value: unknown): void => {
+            track(prop, value);
+            if (textLen > 0 && typeof setObj.setSelectionStyles === 'function') {
+              setObj.setSelectionStyles({ [prop]: value }, 0, textLen);
+            }
+            if (typeof setObj.cleanStyle === 'function') {
+              setObj.cleanStyle(prop);
+            }
+          };
+
+          if (anyData['fontSize'] !== undefined)
+            overlayProp('fontSize', anyData['fontSize']);
+          if (anyData['fontFamily'] !== undefined)
+            overlayProp('fontFamily', anyData['fontFamily']);
+          if (anyData['fontWeight'] !== undefined)
+            overlayProp('fontWeight', anyData['fontWeight']);
+          if (anyData['fontStyle'] !== undefined)
+            overlayProp('fontStyle', anyData['fontStyle']);
+          // textDecoration is the only doc-level decoration field (a string
+          // like 'underline', 'overline', 'linethrough', or any combination
+          // separated by spaces). Fabric exposes it as THREE booleans at
+          // the per-char level — `underline`, `overline`, `linethrough` —
+          // so we have to translate. Empty string means "no decoration" —
+          // clear all three flags at the per-char level too.
+          if (anyData['textDecoration'] !== undefined) {
+            const deco = String(anyData['textDecoration'] ?? '');
+            track('textDecoration', deco);
+            if (textLen > 0 && typeof setObj.setSelectionStyles === 'function') {
+              setObj.setSelectionStyles(
+                {
+                  underline: deco.includes('underline'),
+                  overline: deco.includes('overline'),
+                  linethrough: deco.includes('linethrough'),
+                },
+                0,
+                textLen,
+              );
+            }
+            if (typeof setObj.cleanStyle === 'function') {
+              setObj.cleanStyle('underline');
+              setObj.cleanStyle('overline');
+              setObj.cleanStyle('linethrough');
+            }
+          }
           // Empty string fill/stroke is the "None" signal from the properties
           // panel — fabric accepts `set('fill', '')` (treated as falsy = no
           // fill). The earlier length>0 guard would swallow that signal and
@@ -539,11 +606,11 @@ export class FabricRenderer {
           // value is missing or non-string so a stray number/null patch
           // doesn't reach Fabric's "fill/stroke must be a color" assertion.
           const textFill = anyData['fill'] ?? anyData['color'];
-          if (typeof textFill === 'string') track('fill', textFill);
+          if (typeof textFill === 'string') overlayProp('fill', textFill);
           if (typeof anyData['stroke'] === 'string')
-            track('stroke', anyData['stroke']);
+            overlayProp('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
-            track('strokeWidth', anyData['strokeWidth']);
+            overlayProp('strokeWidth', anyData['strokeWidth']);
         } else if (t === 'rect' || t === 'circle' || t === 'triangle' || t === 'image') {
           if (typeof anyData['fill'] === 'string') track('fill', anyData['fill']);
           if (typeof anyData['stroke'] === 'string')
