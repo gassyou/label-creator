@@ -193,9 +193,6 @@ function generateBarcodeSVG(
   color: string,
   width?: number
 ): string {
-  if (!value) {
-    return createPlaceholder(value, 'BC', 80);
-  }
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     (JsBarcode as any)(svg, value, {
@@ -221,7 +218,7 @@ function generateBarcodeSVG(
     return 'data:image/svg+xml;base64,' + btoa(svgString);
   } catch (e) {
     console.error('Barcode SVG generation failed:', e);
-    return createPlaceholder(value, 'BC', 80);
+    throw e;
   }
 }
 
@@ -239,9 +236,6 @@ async function generateQRCodeSVG(
   value: string,
   size: number
 ): Promise<string> {
-  if (!value) {
-    return createPlaceholder(value, 'QR', size);
-  }
   try {
     // 用 toCanvas 生成 PNG dataURL，与编辑器画布 (editor-canvas.service.ts) 路径保持一致。
     // 之前用 toString({type:'svg'}) 会让 viewBox 与 path 坐标系不一致，
@@ -253,27 +247,6 @@ async function generateQRCodeSVG(
     return canvas.toDataURL('image/png');
   } catch (e) {
     console.error('QR code generation failed:', e);
-    return createPlaceholder(value, 'QR', size);
+    throw e;
   }
-}
-
-/**
- * 生成占位图片
- */
-function createPlaceholder(text: string, type: string, size: number): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(size, 80);
-  canvas.height = Math.max(Math.round(size * 0.5), 40);
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#f5f5f5';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = '#ccc';
-    ctx.strokeRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#666';
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(type + ': ' + text.substring(0, 10), canvas.width / 2, canvas.height / 2 + 4);
-  }
-  return canvas.toDataURL('image/png');
 }
