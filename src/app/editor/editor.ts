@@ -262,13 +262,32 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         const existingId = this.renderer.getObjectId(object);
         const id = existingId || `loaded-${Date.now()}-${index++}`;
         const elementType = (object as any).elementType;
-        if (elementType === 'qrcode' || elementType === 'barcode') {
+        // PHASE 22 FIX: a previous version of this block used a single
+        // `qrcode || barcode` branch that ALSO wrote `barcodeFormat` /
+        // `showText`, which leaked barcode-specific fields onto qrcode
+        // elements on every load (and the `?? 'CODE128'` / `?? true`
+        // defaults meant the leak happened even when the saved JSON
+        // didn't carry those keys). Split the two cases so each element
+        // type only gets back the fields that actually belong to it.
+        if (elementType === 'qrcode') {
           this.renderer.extendWithCustomProperties(object, {
             elementType,
             bindingValue: (object as any).bindingValue ?? '',
             foregroundColor: (object as any).foregroundColor ?? '#000000',
             backgroundColor: (object as any).backgroundColor ?? '#ffffff',
             errorCorrectionLevel: (object as any).errorCorrectionLevel ?? 'M',
+          });
+          // Migration: older builds stamped barcode-only keys onto qrcode
+          // objects during load (see the `qrcode || barcode` block above).
+          // Strip them here so the saved JSON stops carrying them — the
+          // next save round-trips this template clean. `extendWithCustomProperties`
+          // doesn't delete keys; we have to do it explicitly.
+          delete (object as any).barcodeFormat;
+          delete (object as any).showText;
+        } else if (elementType === 'barcode') {
+          this.renderer.extendWithCustomProperties(object, {
+            elementType,
+            bindingValue: (object as any).bindingValue ?? '',
             barcodeFormat: (object as any).barcodeFormat ?? 'CODE128',
             showText: (object as any).showText ?? true,
           });
@@ -490,7 +509,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         const labelTemplate = template as unknown as LabelTemplate;
         // Ensure printSetting has default values for missing properties
         const printSetting = {
-          ...DEFAULT_PRINT_SETTING,
           ...labelTemplate.printSetting,
         };
         this.template.set({ ...labelTemplate, printSetting });

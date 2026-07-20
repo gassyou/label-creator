@@ -9,7 +9,7 @@ export class AddBarcodeCommand implements EditorCommand {
   element: BarcodeElement | null = null;
 
   constructor(
-    private readonly format: BarcodeFormat | string,
+    private readonly barcodeFormat: BarcodeFormat | string = 'CODE128',
     private readonly bindingValue?: string
   ) {}
 
@@ -20,9 +20,8 @@ export class AddBarcodeCommand implements EditorCommand {
       type: 'barcode',
       id: ctx.randomId(),
       x: 24, y: 24, width: 200, height: 80,
-      format: this.format,
-      value: this.bindingValue ?? '',
-      binding: this.bindingValue,
+      barcodeFormat: this.barcodeFormat,
+      bindingValue: this.bindingValue,
       showText: true
     });
 

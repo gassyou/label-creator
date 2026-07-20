@@ -11,8 +11,7 @@ export interface QRCodeElementData {
   width: number;
   height: number;
   lock?: boolean;
-  value?: string;
-  binding?: string;
+  bindingValue?: string;
   errorCorrectionLevel?: string;
   foregroundColor?: string;
   backgroundColor?: string;
@@ -24,8 +23,7 @@ export interface QRCodeElementData {
 
 export class QRCodeElement extends BaseElement {
   declare type: 'qrcode';
-  value?: string;
-  binding?: string;
+  bindingValue?: string;
   errorCorrectionLevel?: string;
   foregroundColor?: string;
   backgroundColor?: string;
@@ -49,7 +47,7 @@ export class QRCodeElement extends BaseElement {
     img.scaleToWidth(this.width);
     img.scaleToHeight(this.height);
     (img as any).elementType = 'qrcode';
-    (img as any).bindingValue = this.binding ?? this.value ?? '';
+    (img as any).bindingValue = this.bindingValue ?? '';
     (img as any).errorCorrectionLevel = this.errorCorrectionLevel ?? 'M';
     (img as any).foregroundColor = this.foregroundColor ?? '#000000';
     (img as any).backgroundColor = this.backgroundColor ?? '#ffffff';
@@ -69,7 +67,7 @@ export class QRCodeElement extends BaseElement {
       id: this.id, type: 'qrcode' as const,
       x: this.x, y: this.y, width: this.width, height: this.height,
       rotation: this.rotation, visible: this.visible, opacity: this.opacity, lock: this.lock,
-      value: this.value, binding: this.binding,
+      bindingValue: this.bindingValue,
       errorCorrectionLevel: this.errorCorrectionLevel,
       foregroundColor: this.foregroundColor,
       backgroundColor: this.backgroundColor
@@ -87,8 +85,7 @@ export class QRCodeElement extends BaseElement {
       height: (obj.height ?? 100) * (obj.scaleY ?? 1),
       rotation: obj.angle ?? 0, opacity: obj.opacity ?? 1, visible: obj.visible ?? true,
       lock: !obj.selectable,
-      value: obj.bindingValue ?? '',
-      binding: obj.bindingValue ?? '',
+      bindingValue: obj.bindingValue ?? '',
       errorCorrectionLevel: obj.errorCorrectionLevel ?? 'M',
       foregroundColor: obj.foregroundColor ?? '#000000',
       backgroundColor: obj.backgroundColor ?? '#ffffff'

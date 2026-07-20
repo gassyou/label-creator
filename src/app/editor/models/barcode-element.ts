@@ -3,7 +3,7 @@ import { FabricImage, type FabricObject } from 'fabric';
 import { BaseElement, type RenderContext } from './element-base';
 import { buildPlaceholderDataUrl } from './placeholder-svg';
 
-export type BarcodeFormat = 'CODE128' | 'EAN13' | 'EAN8' | 'UPC' | 'CODE39';
+export type BarcodeFormat = 'CODE128' | 'EAN13' | 'CODE39';
 
 export interface BarcodeElementData {
   id: string;
@@ -13,9 +13,8 @@ export interface BarcodeElementData {
   width: number;
   height: number;
   lock?: boolean;
-  format: BarcodeFormat | string;
-  value?: string;
-  binding?: string;
+  barcodeFormat?: BarcodeFormat | string;
+  bindingValue?: string;
   showText?: boolean;
   rotation?: number;
   visible?: boolean;
@@ -26,9 +25,9 @@ export interface BarcodeElementData {
 
 export class BarcodeElement extends BaseElement {
   declare type: 'barcode';
-  format!: BarcodeFormat | string;
+  barcodeFormat?: BarcodeFormat | string;
   value?: string;
-  binding?: string;
+  bindingValue?: string;
   showText?: boolean;
   color?: string;
 
@@ -51,8 +50,8 @@ export class BarcodeElement extends BaseElement {
     img.scaleToWidth(this.width);
     img.scaleToHeight(this.height);
     (img as any).elementType = 'barcode';
-    (img as any).bindingValue = this.binding ?? this.value ?? '';
-    (img as any).barcodeFormat = this.format;
+    (img as any).bindingValue = this.bindingValue ?? '';
+    (img as any).barcodeFormat = this.barcodeFormat;
     (img as any).showText = this.showText ?? true;
     ctx.extendWithCustomProperties(img, {
       elementType: 'barcode',
@@ -69,7 +68,7 @@ export class BarcodeElement extends BaseElement {
       id: this.id, type: 'barcode' as const,
       x: this.x, y: this.y, width: this.width, height: this.height,
       rotation: this.rotation, visible: this.visible, opacity: this.opacity, lock: this.lock,
-      format: this.format, value: this.value, binding: this.binding, showText: this.showText,
+      barcodeFormat: this.barcodeFormat, bindingValue: this.bindingValue, showText: this.showText,
       color: this.color
     };
   }
@@ -85,9 +84,8 @@ export class BarcodeElement extends BaseElement {
       height: (obj.height ?? 100) * (obj.scaleY ?? 1),
       rotation: obj.angle ?? 0, opacity: obj.opacity ?? 1, visible: obj.visible ?? true,
       lock: !obj.selectable,
-      format: obj.barcodeFormat ?? 'CODE128',
-      value: obj.bindingValue ?? '',
-      binding: obj.bindingValue ?? '',
+      barcodeFormat: obj.barcodeFormat ?? 'CODE128',
+      bindingValue: obj.bindingValue ?? '',
       showText: obj.showText ?? true,
       color: obj.foreground ?? obj.fill
     });

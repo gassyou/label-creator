@@ -11,7 +11,7 @@
   </label>
   <label>
     <span>Value</span>
-    <input type="text" [ngModel]="$any(s).text" (ngModelChange)="onTextChange($event)" />
+    <input type="text" [ngModel]="$any(s).bindingValue" (ngModelChange)="onTextChange($event)" />
   </label>
   <label class="checkbox-label">
     <input

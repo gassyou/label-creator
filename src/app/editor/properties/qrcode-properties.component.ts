@@ -23,7 +23,7 @@ export class QrcodePropertiesComponent {
   protected onTextChange(text: string): void {
     const sel = this.state();
     if (!sel) return;
-    this.doc.updateElement(sel.id, { text } as any);
+    this.doc.updateElement(sel.id, { bindingValue: text } as any);
   }
 
   protected onForegroundChange(color: string): void {

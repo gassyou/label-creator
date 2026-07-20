@@ -93,7 +93,7 @@ export class OperationsService {
   }
 
   async addBarcode(
-    format: BarcodeElement['format'],
+    format: BarcodeElement['barcodeFormat'] = 'CODE128',
     bindingValue?: string,
   ): Promise<BarcodeElement> {
     const cmd = new AddBarcodeCommand(format, bindingValue);

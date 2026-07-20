@@ -556,6 +556,20 @@ export class FabricRenderer {
           const textLen =
             typeof setObj.text === 'string' ? setObj.text.length : 0;
           const overlayProp = (prop: string, value: unknown): void => {
+            // PHASE 23 GUARD: Fabric's `_getFontDeclaration` / `_setTextStyles`
+            // blow up at render time if a font/deco/color property ends up
+            // nullish on either the outer text object or any per-char entry
+            // (it calls e.g. `fontFamily.includes(...)` directly, and
+            // destructuring-with-default only rescues `undefined`, not
+            // `null`). Our doc model lets the property panel store `null`
+            // (no font picked / cleared input), and we previously forwarded
+            // that verbatim into `set(prop, null)` and
+            // `setSelectionStyles({prop: null}, …)` — null then leaks into
+            // `getCompleteStyleDeclaration` and crashes the render loop.
+            // Drop nullish values before touching Fabric: undefined means
+            // "the doc didn't carry this property, leave Fabric alone",
+            // null means the same thing for our purposes here.
+            if (value === undefined || value === null) return;
             track(prop, value);
             if (textLen > 0 && typeof setObj.setSelectionStyles === 'function') {
               setObj.setSelectionStyles({ [prop]: value }, 0, textLen);
@@ -580,7 +594,14 @@ export class FabricRenderer {
           // so we have to translate. Empty string means "no decoration" —
           // clear all three flags at the per-char level too.
           if (anyData['textDecoration'] !== undefined) {
-            const deco = String(anyData['textDecoration'] ?? '');
+            // PHASE 23 GUARD: coerce non-strings to '' so an absent/cleared
+            // decoration doesn't leave `this.textDecoration = null` on the
+            // Fabric object — Fabric's `textDecoration.includes(...)`
+            // calls in render paths crash on null.
+            const deco =
+              typeof anyData['textDecoration'] === 'string'
+                ? anyData['textDecoration']
+                : '';
             track('textDecoration', deco);
             if (textLen > 0 && typeof setObj.setSelectionStyles === 'function') {
               setObj.setSelectionStyles(
@@ -611,6 +632,45 @@ export class FabricRenderer {
             overlayProp('stroke', anyData['stroke']);
           if (anyData['strokeWidth'] !== undefined)
             overlayProp('strokeWidth', anyData['strokeWidth']);
+
+          // PHASE 23 GUARD: Fabric's `_render` calls `_setTextStyles(ctx)`
+          // unconditionally — and `_setTextStyles` calls
+          // `_getFontDeclaration(undefined)`, which destructures
+          // `{ fontFamily = this.fontFamily, ... } = {}`. The default ONLY
+          // fires for `undefined`, not `null`. If a previous write or a
+          // stale saved JSON leaves `this.fontFamily` as `null` / empty
+          // string, `_getFontDeclaration` reaches `fontFamily.includes(...)`
+          // and crashes the entire render loop (`_render` → `_setTextStyles`
+          // → `_getFontDeclaration`). This was happening when the user
+          // deleted the last character of a textbox and the doc-driven
+          // `applyElementsFromDoc` effect re-applied properties to the
+          // Fabric object. Make sure the four text-layout-critical
+          // properties always have a usable string/number BEFORE the
+          // render cycle hits this code path.
+          if (typeof (setObj as any).fontFamily !== 'string' || !(setObj as any).fontFamily) {
+            const fallback =
+              (typeof anyData['fontFamily'] === 'string' && anyData['fontFamily']) ||
+              'Liberation Sans';
+            track('fontFamily', fallback);
+          }
+          if (typeof (setObj as any).fontSize !== 'number' || !(setObj as any).fontSize) {
+            const fallback =
+              (typeof anyData['fontSize'] === 'number' && anyData['fontSize']) ||
+              16;
+            track('fontSize', fallback);
+          }
+          if (typeof (setObj as any).fontWeight !== 'string') {
+            const fallback =
+              (typeof anyData['fontWeight'] === 'string' && anyData['fontWeight']) ||
+              'normal';
+            track('fontWeight', fallback);
+          }
+          if (typeof (setObj as any).fontStyle !== 'string') {
+            const fallback =
+              (typeof anyData['fontStyle'] === 'string' && anyData['fontStyle']) ||
+              'normal';
+            track('fontStyle', fallback);
+          }
         } else if (t === 'rect' || t === 'circle' || t === 'triangle' || t === 'image') {
           if (typeof anyData['fill'] === 'string') track('fill', anyData['fill']);
           if (typeof anyData['stroke'] === 'string')
