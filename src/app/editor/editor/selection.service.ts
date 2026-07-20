@@ -142,6 +142,21 @@ export class SelectionService {
     // observe it. The local signals above are kept for the legacy panel
     // (until the panels migrate to read from `selection`/`selectionProperties`).
     this.doc.selectElement(id || null);
+
+    // Fabric's `text:changed` fires on every keystroke. Persist the new
+    // text into the central document so the doc ↔ fabric reconciliation
+    // doesn't overwrite the user's input back to the placeholder ('Text')
+    // on the next effect run. Only write when the value actually changed
+    // (avoids re-triggering the doc → fabric effect on no-op edits) and
+    // skip if the doc already carries the same value. The cycle guard on
+    // applyElementsFromDoc prevents the echoed effect from looping.
+    if ((type === 'i-text' || type === 'textbox') && id) {
+      const nextText = typeof object.text === 'string' ? object.text : '';
+      const cur = this.doc.elements().get(id) as any;
+      if (cur && cur.text !== nextText) {
+        this.doc.updateElement(id, { text: nextText } as any);
+      }
+    }
   }
 
   /**
