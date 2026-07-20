@@ -256,6 +256,14 @@ export class FabricRenderer {
    */
   private wiredHandlers: Array<[string, (...args: unknown[]) => void]> = [];
 
+  /**
+   * Tracks the last background-image data URL pushed to the canvas. Used
+   * by `applyPageFromDoc` to skip reloading the same image on every doc
+   * tick (FabricImage.fromURL is async and would otherwise churn).
+   * Empty string means "no background image applied".
+   */
+  private lastAppliedBgImage = '';
+
   private unwireEditorEvents(): void {
     if (!this.canvas || this.wiredHandlers.length === 0) return;
     for (const [eventName, handler] of this.wiredHandlers) {
@@ -636,9 +644,9 @@ export class FabricRenderer {
   private applyPageFromDoc(page: LabelPageSettings): void {
     if (!this.canvas) return;
     // Defensive: skip when mid-load / mid-command. See applyElementsFromDoc
-    // for rationale. loadPage handles its own background color assignment
-    // with the `|| '#ffffff'` fallback; we don't want to overwrite that with
-    // an empty string during the same load.
+    // for rationale. loadPage handles its own background color/image
+    // assignment with the `|| '#ffffff'` fallback; we don't want to
+    // overwrite that with an empty string during the same load.
     if (this.hydrating) return;
     this.syncDirection.set('doc-to-fabric');
     try {
@@ -654,6 +662,15 @@ export class FabricRenderer {
       // explicitly so the editor doesn't spam the console and the
       // requestRenderAll below doesn't bail.
       this.canvas.backgroundColor = page.backgroundColor || '#ffffff';
+      // Background image — `applyBackgroundImage` loads via
+      // FabricImage.fromURL which is async, so we fire-and-forget here.
+      // Cache the last applied URL to avoid reloading the same image on
+      // every page signal tick.
+      const nextBgImage = page.backgroundImage || '';
+      if (nextBgImage !== this.lastAppliedBgImage) {
+        this.lastAppliedBgImage = nextBgImage;
+        void this.applyBackgroundImage(nextBgImage || undefined);
+      }
       this.canvas.requestRenderAll();
     } finally {
       // Defer the reset to a microtask so any Fabric events queued during
@@ -664,6 +681,32 @@ export class FabricRenderer {
       // re-triggering this effect forever.
       queueMicrotask(() => this.syncDirection.set('idle'));
     }
+  }
+
+  /**
+   * Loads a background image (data URL) and tiles it across the Fabric
+   * canvas via a repeating Pattern. Mirrors `EditorCanvasService`'s
+   * legacy method. Async because FabricImage.fromURL resolves after the
+   * image element finishes decoding.
+   */
+  async applyBackgroundImage(backgroundImage: string | undefined): Promise<void> {
+    const canvas = this.canvas;
+    if (!canvas) return;
+    if (!backgroundImage) {
+      // `loadPage` already set backgroundColor; clearing the pattern here
+      // would erase the color. Leave backgroundColor alone — caller will
+      // have set the color they want.
+      this.lastAppliedBgImage = '';
+      return;
+    }
+    const { FabricImage, Pattern } = await import('fabric');
+    const image = await FabricImage.fromURL(backgroundImage);
+    const pattern = new Pattern({ source: image.getElement(), repeat: 'repeat' });
+    canvas.backgroundColor = pattern;
+    // Record the URL we just applied so the next doc → fabric tick skips
+    // reloading the same image (applyPageFromDoc consults this cache).
+    this.lastAppliedBgImage = backgroundImage;
+    canvas.requestRenderAll();
   }
 
   // ============================================================

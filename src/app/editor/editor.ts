@@ -229,8 +229,23 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.doc.setElements(new Map());
     canvas.setDimensions({ width: widthPx, height: heightPx });
 
+    // Mirror the saved page settings into the central document so that:
+    //   1. The doc → fabric effect sees a stable page that matches the
+    //      freshly loaded label (otherwise the next effect tick would
+    //      overwrite the canvas back to DEFAULT_PAGE_SETTINGS).
+    //   2. Subsequent saves (which serialize `doc.page()`) round-trip the
+    //      page dimensions and background correctly instead of writing
+    //      the default 100×100 back out.
+    // Done while hydrating so the applyPageFromDoc effect below is a no-op.
+    this.doc.page.set({
+      widthMm: label.width,
+      heightMm: label.height,
+      backgroundColor: label.backgroundColor || undefined,
+      backgroundImage: label.backgroundImage || undefined,
+    });
+
     if (label.backgroundImage) {
-      await this.applyBackgroundImage(label.backgroundImage);
+      await this.renderer.applyBackgroundImage(label.backgroundImage);
     } else {
       // Guard against empty-string or undefined color values: Fabric rejects
       // anything that isn't "#rrggbb" (empty string triggers a console error
@@ -286,17 +301,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.selection.handleFabricSelection(null);
     this.renderer.setHydrating(false);
     this.renderer.touchRevision();
-    canvas.requestRenderAll();
-  }
-
-  /** Applies a background image (data URL) to the Fabric canvas. */
-  private async applyBackgroundImage(backgroundImage: string): Promise<void> {
-    const canvas = this.renderer.getCanvas();
-    if (!canvas || !backgroundImage) return;
-    const { FabricImage, Pattern } = await import('fabric');
-    const image = await FabricImage.fromURL(backgroundImage);
-    const pattern = new Pattern({ source: image.getElement(), repeat: 'repeat' });
-    canvas.backgroundColor = pattern;
     canvas.requestRenderAll();
   }
 
