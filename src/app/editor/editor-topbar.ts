@@ -36,7 +36,6 @@ export class EditorTopbarComponent {
   readonly zoomOutRequested = output<void>();
   readonly bringFrontRequested = output<void>();
   readonly sendBackRequested = output<void>();
-  readonly deleteRequested = output<void>();
   readonly alignLeftRequested = output<void>();
   readonly alignCenterHRequested = output<void>();
   readonly alignRightRequested = output<void>();

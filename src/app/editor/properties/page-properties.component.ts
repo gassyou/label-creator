@@ -6,6 +6,7 @@ import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzUploadModule, type NzUploadFile } from 'ng-zorro-antd/upload';
 import { LabelDocumentService } from '../document';
+import { PAGE_SIZE_PRESETS } from '../models/label.models';
 
 @Component({
   selector: 'app-page-properties',
@@ -37,17 +38,10 @@ export class PagePropertiesComponent {
   protected onPresetChange(id: string): void {
     this.presetId.set(id);
     if (id === 'custom') return;
-    // Mirror the legacy preset table; keep names stable for the wire format.
-    const presets: Record<string, { w: number; h: number }> = {
-      'a4-portrait': { w: 210, h: 297 },
-      'a4-landscape': { w: 297, h: 210 },
-      'a5-portrait': { w: 148, h: 210 },
-      'a5-landscape': { w: 210, h: 148 },
-      'letter-portrait': { w: 216, h: 279 },
-      'letter-landscape': { w: 279, h: 216 },
-    };
-    const preset = presets[id];
-    if (preset) this.doc.setPageSize(preset.w, preset.h);
+    // Look the preset up in the shared PAGE_SIZE_PRESETS table so the
+    // dropdown and the conversion function stay in lockstep.
+    const preset = PAGE_SIZE_PRESETS.find((p) => p.id === id);
+    if (preset) this.doc.setPageSize(preset.widthMm, preset.heightMm);
   }
 
   protected onBackgroundColorChange(color: string): void {

@@ -145,73 +145,12 @@ button.icon-button {
   }
 }
 
-button.secondary {
-  background: #f8fafc;
-  color: #1f2937;
-}
-
-button.secondary.active,
-.segmented button.active {
-  background: #eff6ff;
-  color: #2563eb;
-  border-color: #bfdbfe;
-}
-
 .wide {
   width: 100%;
 }
 
-.page-actions {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.page-list {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.page-card {
-  display: grid;
-  justify-items: start;
-  gap: 4px;
-  padding: 12px 14px;
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: #dbe4f0;
-}
-
-.page-card.active {
-  background: #eff6ff;
-  border-color: #93c5fd;
-  box-shadow: inset 0 0 0 1px #bfdbfe;
-}
-
-.page-card__title {
-  font-weight: 700;
-}
-
-.page-card__meta {
-  font-size: 0.8rem;
-  color: #64748b;
-}
-
 .property-stack {
   display: grid;
-}
-
-.inline-actions,
-.segmented {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.segmented button {
-  background: #fff;
-  color: #4b5563;
 }
 
 .muted {

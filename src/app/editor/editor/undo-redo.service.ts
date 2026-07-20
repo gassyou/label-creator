@@ -35,6 +35,7 @@ import { type LabelElement } from '../models/editor.models';
 import { FabricRenderer } from '../render/fabric-renderer';
 import type { EditorCommand } from '../commands/editor-command';
 import type { EditorCommandContext } from './editor-command-context';
+import { MULTI_SELECT_MARKER_ID } from './selection.service';
 
 /**
  * A single undo/redo snapshot. Bundles the Fabric canvas JSON with an
@@ -164,16 +165,6 @@ export class UndoRedoService {
     this.syncSignals();
   }
 
-  /** Backwards-compatible accessor for EditorCanvasService.canUndo(). */
-  hasUndo(): boolean {
-    return this.undoStack.length > 0;
-  }
-
-  /** Backwards-compatible accessor for EditorCanvasService.canRedo(). */
-  hasRedo(): boolean {
-    return this.redoStack.length > 0;
-  }
-
   // ---------------------------------------------------------------
   // Private helpers (snapshot bookkeeping + cycle-guard restore)
   // ---------------------------------------------------------------
@@ -266,7 +257,7 @@ export class UndoRedoService {
     this.canvas.forEachObject((obj) => {
       const id = this.getObjectId(obj);
       if (!id) return;
-      if (id === 'multi-select-marker') {
+      if (id === MULTI_SELECT_MARKER_ID) {
         multiSelectMarkerSeen = true;
         return;
       }

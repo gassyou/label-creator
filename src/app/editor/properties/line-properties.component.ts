@@ -19,10 +19,18 @@ export class LinePropertiesComponent {
     return sel?.type === 'line' ? sel : null;
   });
 
+  /**
+   * Persist the user-entered line length as a width on the central doc.
+   * The on-canvas line is rendered from `(x, y) → (x + width, y)`, so the
+   * "Length" field is structurally a width delta — keeping it under a
+   * separate `length` field on the doc would diverge from the rendered
+   * shape (see {@link LineElement.fromFabricObject} which derives width
+   * from `x2 - x1`).
+   */
   protected onLengthChange(px: number): void {
     const sel = this.state();
     if (!sel) return;
-    this.doc.updateElement(sel.id, { length: Number(px) } as any);
+    this.doc.updateElement(sel.id, { width: Number(px) } as any);
   }
 
   protected onStrokeChange(color: string): void {

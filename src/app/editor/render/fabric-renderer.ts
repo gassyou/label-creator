@@ -100,23 +100,6 @@ export class FabricRenderer {
   private drawingMode = false;
 
   /**
-   * Idempotent setter used by {@link applyElementsFromDoc}. Fabric's `set()`
-   * ALWAYS fires `object:modified`, even when the new value equals the
-   * current one. The doc → fabric effect calls `set()` for every field of
-   * every element on every doc change; without this guard each `set()` would
-   * echo back through `handleObjectModified` → `doc.updateElement` →
-   * `doc.elements` → this effect, producing an infinite NG0103 cycle.
-   *
-   * Reading `obj.get(key)` first lets us skip the no-op assignments so
-   * Fabric doesn't fire spurious change events for unchanged values.
-   */
-  private setIfChanged(obj: any, key: string, value: unknown): void {
-    if (obj.get(key) !== value) {
-      obj.set(key, value);
-    }
-  }
-
-  /**
    * Returns the image's natural pixel size from a Fabric object, falling
    * back across Fabric API versions. Used to derive scaleX/Y so that
    * `width * scaleX == targetVisualWidth` holds regardless of how many
@@ -222,10 +205,6 @@ export class FabricRenderer {
     this.applyInteractionMode();
     if (enabled && changed && onEnterDrawing) onEnterDrawing();
     return changed;
-  }
-
-  isDrawingMode(): boolean {
-    return this.drawingMode;
   }
 
   private applyInteractionMode(): void {

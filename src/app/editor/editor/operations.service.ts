@@ -2,14 +2,12 @@
  * Operations service (Phase 4 of the four-layer architecture refactor).
  *
  * Owns the geometric / structural operations the editor exposes to the user:
- *  - Element creation commands (`addText`, `addShape`, `addQRCode`, `addBarcode`,
- *    `addImage`) — each method instantiates the corresponding `*Command` and
- *    dispatches it through `UndoRedoService.execute(ctx)`.
- *  - Structural ops on the current selection (`deleteSelected`, `clearCanvas`,
- *    `cloneSelected`, `copySelected`, `pasteClipboard`).
- *  - Multi-selection alignment (`alignLeft`, `alignCenter`, `alignRight`,
- *    `alignTop`, `alignMiddle`, `alignBottom`, `alignSelectedObjects`,
- *    `distributeSelectedObjects`).
+ *  - Element creation commands (`addText`, `addShape`, `addQRCode`, `addBarcode`)
+ *    — each method instantiates the corresponding `*Command` and dispatches
+ *    it through `UndoRedoService.execute(ctx)`.
+ *  - Structural ops on the current selection (`deleteSelected`, `cloneSelected`,
+ *    `copySelected`, `pasteClipboard`).
+ *  - Multi-selection alignment (`alignSelectedObjects`, `distributeSelectedObjects`).
  *  - Z-order ops (`bringSelectionToFront`, `sendSelectionToBack`).
  *
  * Also builds the {@link EditorCommandContext} used by every EditorCommand.
@@ -32,14 +30,11 @@ import { AddTextCommand } from '../commands/add-text.command';
 import { AddShapeCommand } from '../commands/add-shape.command';
 import { AddQRCodeCommand } from '../commands/add-qrcode.command';
 import { AddBarcodeCommand } from '../commands/add-barcode.command';
-import { AddImageCommand } from '../commands/add-image.command';
 import { DeleteSelectedCommand } from '../commands/delete-selected.command';
-import { ClearCanvasCommand } from '../commands/clear-canvas.command';
 import type {
   TextElement,
   QRCodeElement,
   BarcodeElement,
-  ImageElement,
   LabelElement,
 } from '../models/editor.models';
 import type { BaseElement } from '../models/element-base';
@@ -106,23 +101,12 @@ export class OperationsService {
     return cmd.element!;
   }
 
-  async addImage(url: string): Promise<ImageElement | null> {
-    if (!url) return null;
-    const cmd = new AddImageCommand(url);
-    await this.undoRedo.execute(cmd, this.buildContext());
-    return cmd.element!;
-  }
-
   // ============================================================
   // Structural operations on the current selection
   // ============================================================
 
   async deleteSelected(): Promise<void> {
     await this.undoRedo.execute(new DeleteSelectedCommand(), this.buildContext());
-  }
-
-  async clearCanvas(): Promise<void> {
-    await this.undoRedo.execute(new ClearCanvasCommand(), this.buildContext());
   }
 
   /** In-memory clipboard for copy/paste. */
@@ -208,30 +192,6 @@ export class OperationsService {
   // OperationsService is the natural home for "what happens when the user
   // presses the align-left button."
   // ============================================================
-
-  alignLeft(): void {
-    this.alignSelectedObjects('left');
-  }
-
-  alignCenter(): void {
-    this.alignSelectedObjects('center');
-  }
-
-  alignRight(): void {
-    this.alignSelectedObjects('right');
-  }
-
-  alignTop(): void {
-    this.alignSelectedObjects('top');
-  }
-
-  alignMiddle(): void {
-    this.alignSelectedObjects('middle');
-  }
-
-  alignBottom(): void {
-    this.alignSelectedObjects('bottom');
-  }
 
   alignSelectedObjects(direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'): void {
     const canvas = this.renderer.getCanvas();
@@ -502,9 +462,9 @@ export class OperationsService {
   }
 
   /**
-   * Wipes the central document's element registry. Used by the
-   * ClearCanvasCommand. Mirrors the legacy
-   * `EditorCanvasService.clearCanvasInternal` body.
+   * Wipes the central document's element registry. Used by the delete
+   * and clear commands to keep `doc.elements` coherent with the Fabric
+   * canvas after a multi-object wipe.
    */
   private clearAllElements(): void {
     this.doc.setElements(new Map());

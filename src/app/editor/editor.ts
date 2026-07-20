@@ -29,7 +29,6 @@ import {
   LabelTemplate,
   Label,
   millimetersToPixels,
-  PAGE_SIZE_PRESETS,
 } from './models/label.models';
 import { webFontLoader } from '../print/generators/web-font-loader';
 import { LabelDocumentService } from './document';
@@ -71,6 +70,11 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
    *   - `SelectionService` — Fabric-event → selection-state signals.
    *   - `UndoRedoService` — snapshot stacks + the command-execution
    *     wrapper.
+   *
+   * `LabelDocumentService` is also injected here because the editor shell
+   * is the single owner of "load a saved template into the editor": it
+   * has to seed `doc.page` and `doc.elements` before the Fabric effects
+   * fire (see {@link loadPage}).
    */
   private readonly operations = inject(OperationsService);
   private readonly selection = inject(SelectionService);
@@ -91,7 +95,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Current editing template ID, null for new */
   private templateId: string | null = null;
 
-  readonly pageSizePresets = PAGE_SIZE_PRESETS;
   readonly hasSelection = this.selection.hasSelection;
   readonly hasMultiSelection = this.selection.hasMultiSelection;
 
@@ -111,17 +114,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   /** Canvas state derived from template (px) - auto-synced with template */
   readonly canvasState = computed(() => {
-    const t = this.template();
-    // Defensive: handle both old flat structure and new nested structure
-    const label = t?.label ?? {
-      width: 210,
-      height: 297,
-      backgroundColor: '#ffffff',
-      backgroundImage: '',
-    };
+    const label = this.template().label;
     return {
-      width: millimetersToPixels(label.width ?? 210),
-      height: millimetersToPixels(label.height ?? 297),
+      width: millimetersToPixels(label.width),
+      height: millimetersToPixels(label.height),
       backgroundColor: label.backgroundColor ?? '#ffffff',
       backgroundImage: label.backgroundImage || '',
     };
@@ -514,7 +510,6 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     // Page fields come from the live `LabelDocumentService.page()` signal so
     // edits made via PagePropertiesComponent (which writes only to the doc)
     // are reflected on save. `canvasJson` comes from the Fabric canvas.
-    // The conversion lives in `LabelConverter` (persistence layer).
     return LabelConverter.buildLabelTemplate(
       this.doc.page(),
       this.serializeCanvas(),

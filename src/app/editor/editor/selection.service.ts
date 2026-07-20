@@ -2,10 +2,10 @@
  * Selection service (Phase 3 of the four-layer architecture refactor).
  *
  * Owns the Fabric-event → selection-state half of the editor:
- *  - The selection read API (`selected`, `textEditorVisible`,
- *    `figureEditorVisible`) consumed by the legacy panels.
+ *  - The `hasSelection` / `hasMultiSelection` signals consumed by the
+ *    toolbar buttons.
  *  - The computed proxies `selection` / `selectionProperties` from
- *    {@link LabelDocumentService} consumed by the newer properties panel.
+ *    {@link LabelDocumentService} consumed by the properties panel.
  *  - The two Fabric event handlers:
  *      - {@link handleFabricSelection} — Fabric selection:* / text:changed
  *      - {@link handleFabricModification} — Fabric object:modified
@@ -14,19 +14,20 @@
  *  - Canvas lifecycle or Fabric → geometry: that's `FabricRenderer`.
  *  - Cycle guard (`syncDirection`): that's `FabricRenderer` — read here as
  *    a flag to skip echoes of doc-driven updates.
- *  - Backfill of legacy elements into `doc.elements()`: still required because
- *    templates hydrated from older save formats may carry Fabric objects that
- *    have no doc entry yet.
  *
  * Canvas event listener wiring (`canvas.on('selection:*', ...)` etc.) stays
- * on `EditorCanvasService.initialize()` — that wiring forwards the active
- * Fabric object into this service.
+ * on the editor shell, which forwards the active Fabric object into this
+ * service via `initializeCanvas`.
  */
 import { Injectable, inject, signal } from '@angular/core';
 import { FabricRenderer } from '../render/fabric-renderer';
 import { LabelDocumentService } from '../document/label-document.service';
-import { BaseElement } from '../models/element-base';
-import { type LabelElement } from '../models/editor.models';
+
+/** Sentinel id used to mark a Fabric ActiveSelection so `reconcileDocFromCanvas`
+ *  skips it (multi-select has no backing doc element). Shared via this constant
+ *  so the writer (`handleFabricSelection`) and reader (`reconcileDocFromCanvas`)
+ *  agree without a string-literal duplication. */
+export const MULTI_SELECT_MARKER_ID = 'multi-select-marker';
 
 @Injectable()
 export class SelectionService {
@@ -36,15 +37,6 @@ export class SelectionService {
   // ---------------------------------------------------------------------
   // Public read API
   // ---------------------------------------------------------------------
-
-  /** Legacy signal — the currently-selected Fabric element, or null. */
-  readonly selected = signal<BaseElement | null>(null);
-
-  /** Legacy signal — text editor visible for the selected element. */
-  readonly textEditorVisible = signal(false);
-
-  /** Legacy signal — figure editor (fill/stroke/etc.) visible for the selected element. */
-  readonly figureEditorVisible = signal(false);
 
   /** Computed proxies of the doc's selection. */
   readonly selection = this.doc.selection;
@@ -63,22 +55,22 @@ export class SelectionService {
   readonly hasMultiSelection = signal(false);
 
   // ---------------------------------------------------------------------
-  // Called by EditorCanvasService on Fabric events
+  // Fabric event handlers — wired by the editor shell on initializeCanvas
   // ---------------------------------------------------------------------
 
   /**
    * Handles Fabric `selection:created`, `selection:updated`, `selection:cleared`,
-   * and `text:changed` events.
+   * and `text:changed` events. Mirrors selection into:
+   *  - the toolbar's `hasSelection` / `hasMultiSelection` flags, and
+   *  - the central `LabelDocumentService.selectionId` consumed by the
+   *    properties panel via `selection` / `selectionProperties`.
    *
-   * Mirrors selection into both the legacy signals (consumed by the legacy
-   * property panel and the in-page text/figure editor UI) and the central
-   * `LabelDocumentService.selectionId` (consumed by doc-level computeds).
+   * For text objects, also persists the new text back to the doc on every
+   * keystroke so the doc ↔ fabric reconciliation doesn't overwrite the
+   * user's input back to the placeholder ('Text') on the next effect run.
    */
   handleFabricSelection(object: any): void {
     if (!object) {
-      this.selected.set(null);
-      this.textEditorVisible.set(false);
-      this.figureEditorVisible.set(false);
       this.hasSelection.set(false);
       this.hasMultiSelection.set(false);
       this.doc.selectElement(null);
@@ -95,18 +87,9 @@ export class SelectionService {
     });
 
     if (isMultiSelect) {
-      // For multi-selection, set a marker that selection exists
-      const dummyElement: LabelElement = {
-        type: 'rect',
-        id: 'multi-select-marker',
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-      };
-      this.selected.set(dummyElement as unknown as BaseElement);
-      this.textEditorVisible.set(false);
-      this.figureEditorVisible.set(false);
+      // Multi-selection: keep the selection signals true but don't pin a
+      // single doc element as "selected" — the property panel renders the
+      // empty state until the user collapses to a single selection.
       this.hasSelection.set(true);
       this.hasMultiSelection.set(true);
       this.doc.selectElement(null);
@@ -114,8 +97,6 @@ export class SelectionService {
     }
 
     const id = this.getObjectId(object);
-    const element = (this.doc.elements().get(id) ?? null) as BaseElement | null;
-    this.selected.set(element);
     this.hasSelection.set(true);
     this.hasMultiSelection.set(false);
 
@@ -128,19 +109,8 @@ export class SelectionService {
     // returns null and the property panel renders its muted placeholder —
     // acceptable for a pathological case.
 
-    this.textEditorVisible.set(false);
-    this.figureEditorVisible.set(false);
-
-    const type = object.type;
-    if (type === 'rect' || type === 'circle' || type === 'triangle' || type === 'line') {
-      this.figureEditorVisible.set(true);
-    } else if (type === 'i-text' || type === 'textbox') {
-      this.textEditorVisible.set(true);
-    }
-
     // Mirror selection into the central document so doc consumers can
-    // observe it. The local signals above are kept for the legacy panel
-    // (until the panels migrate to read from `selection`/`selectionProperties`).
+    // observe it.
     this.doc.selectElement(id || null);
 
     // Fabric's `text:changed` fires on every keystroke. Persist the new
@@ -150,6 +120,7 @@ export class SelectionService {
     // (avoids re-triggering the doc → fabric effect on no-op edits) and
     // skip if the doc already carries the same value. The cycle guard on
     // applyElementsFromDoc prevents the echoed effect from looping.
+    const type = object.type;
     if ((type === 'i-text' || type === 'textbox') && id) {
       const nextText = typeof object.text === 'string' ? object.text : '';
       const cur = this.doc.elements().get(id) as any;
