@@ -111,9 +111,6 @@ export class LabelDataBindingService {
     const bindingValue = obj.bindingValue || '';
     const resolvedValue = this.resolveBindingValue(bindingValue, data, unbound);
 
-    // 关键：使用 FabricImage 框的视觉尺寸（width × scaleX, height × scaleY），
-    // 而不是 obj.width/height（obj 内部逻辑尺寸，可能因拖动而偏离真实比例）。
-    // 用视觉尺寸生成条形码/QR，生成的图比例 = 框比例，填进框时不被拉伸。
     const widthPx = Math.round((obj.width || 100) * (obj.scaleX || 1));
     const heightPx = Math.round((obj.height || 50) * (obj.scaleY || 1));
 
@@ -140,10 +137,13 @@ export class LabelDataBindingService {
         return obj;
       }
 
-      // QR 用视觉尺寸的最大边作为正方形边长
-      const size = Math.max(widthPx, heightPx);
+      // QR dataURL 的 width 必须等于 obj.width（不是 obj.width × scaleX），
+      // fabric 渲染 image 元素时用 element.naturalWidth × obj.scaleX 计算视觉宽度。
+      // 如果 size 用 widthPx (= obj.width × scaleX)，fabric 会把 QR 渲染成
+      //   naturalWidth × scaleX = obj.width × scaleX × scaleX，
+      // 比用户设计意图大 scaleX 倍，超出画布被裁。
+      const size = Math.min(obj.width || 100, obj.height || 50);
       const dataUrl = await generateQRCodeSVG(resolvedValue, size);
-
       return { ...obj, src: dataUrl };
     }
 
@@ -207,7 +207,6 @@ function generateBarcodeSVG(
     // 重写 viewBox/width/height：让 SVG 坐标系比例 = 视觉尺寸比例，
     // 条形码填进 PDF 框时不被拉伸。
     if (width && width > 0 && height > 0) {
-      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
       svg.setAttribute('width', String(width));
       svg.setAttribute('height', String(height));
       svg.setAttribute('preserveAspectRatio', 'none');
@@ -225,26 +224,55 @@ function generateBarcodeSVG(
 /**
  * 生成 QR 码（SVG dataURL）。
  *
- * qrcode 库 `toString({type: 'svg'})` 输出的 SVG viewBox 由模块数决定，
- * 与目标视觉尺寸无关。这里生成后改写 viewBox 让它等于目标尺寸，
- * 配合 preserveAspectRatio="none" 让 svg2pdf 按目标尺寸 1:1 渲染，
- * QR 码不被拉伸。
+ * 注意：不能用 qrcode 库的 `toString({ type: 'svg' })`，因为它硬编码用
+ * `stroke` 渲染模块（每个黑色模块只画一条水平线、靠 stroke 视觉错觉呈现方块）。
+ * 浏览器渲染时 stroke 正常 → 看到完整二维码，但 svg2pdf / pdfkit-svg
+ * 在处理内嵌 SVG 时对 path stroke 渲染不可靠，stroke 会丢失，
+ * 结果 PDF 里的二维码只剩一排排水平短线。
  *
- * @param size 视觉正方形边长（px）
+ * 这里改用 `QRCode.create()` 拿到模块数组，自己用 `<rect fill>` 画每个黑色模块：
+ * - 填充用 fill，svg2pdf 完整支持。
+ * - viewBox 用 0 0 size size，宽高也是 size，坐标系一致，
+ *   svg2pdf 直接 1:1 渲染，不会缩放错位。
+ *
+ * @param size 视觉正方形边长（px），同时作为 viewBox 与 width/height 单位。
  */
 async function generateQRCodeSVG(
   value: string,
   size: number
 ): Promise<string> {
   try {
-    // 用 toCanvas 生成 PNG dataURL，与编辑器画布 (editor-canvas.service.ts) 路径保持一致。
-    // 之前用 toString({type:'svg'}) 会让 viewBox 与 path 坐标系不一致，
-    // 出现 QR 码只占 27% 区域的 bug。
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    (QRCode as any).toCanvas(canvas, value, { width: size, margin: 1 });
-    return canvas.toDataURL('image/png');
+    const qr = (QRCode as any).create(value, { errorCorrectionLevel: 'M' });
+    const moduleSize = qr.modules.size as number;
+    const data: ArrayLike<number> = qr.modules.data;
+    const margin = 1; // 与原 qrcode 库 margin: 1 行为一致
+    const total = moduleSize + margin * 2;
+    // viewBox 单位 = 像素（让 svg2pdf 不需要做 viewBox 缩放）
+    const cellPx = size / total;
+
+    const rects: string[] = [];
+    // 背景：白色矩形铺满（与 qrcode 库输出一致）
+    rects.push(`<rect x="0" y="0" width="${size}" height="${size}" fill="#ffffff"/>`);
+
+    for (let row = 0; row < moduleSize; row++) {
+      for (let col = 0; col < moduleSize; col++) {
+        if (data[row * moduleSize + col]) {
+          const x = (col + margin) * cellPx;
+          const y = (row + margin) * cellPx;
+          rects.push(
+            `<rect x="${x.toFixed(3)}" y="${y.toFixed(3)}" width="${cellPx.toFixed(3)}" height="${cellPx.toFixed(3)}" fill="#000000"/>`
+          );
+        }
+      }
+    }
+
+    const svgString =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+      `viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">` +
+      rects.join('') +
+      `</svg>`;
+
+    return 'data:image/svg+xml;base64,' + btoa(svgString);
   } catch (e) {
     console.error('QR code generation failed:', e);
     throw e;

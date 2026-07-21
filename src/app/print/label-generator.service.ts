@@ -39,14 +39,6 @@ export class LabelGeneratorService {
   }
 
   /**
-   * 生成 PDF
-   */
-  async generatePdf(labels: Label[], printSetting: PrintSetting, options?: PdfGenerateOptions): Promise<Blob> {
-    const generator = this.getGenerator('pdf', printSetting);
-    return generator.generate(labels, options) as Promise<Blob>;
-  }
-
-  /**
    * 生成单个 PNG（不进行排版布局，直接生成标签本身）
    * @param label 标签数据
    * @param options 生成选项，支持 thumbnail 模式
@@ -71,6 +63,14 @@ export class LabelGeneratorService {
   async generateSinglePdf(label: Label): Promise<Blob> {
     const generator = this.getGenerator('pdf', DEFAULT_PRINT_SETTING);
     return generator.generateSingle(label) as Promise<Blob>;
+  }
+
+  /**
+   * 生成 PDF
+   */
+  async generatePdf(labels: Label[], printSetting: PrintSetting, options?: PdfGenerateOptions): Promise<Blob> {
+    const generator = this.getGenerator('pdf', printSetting);
+    return generator.generate(labels, options) as Promise<Blob>;
   }
 
   /**

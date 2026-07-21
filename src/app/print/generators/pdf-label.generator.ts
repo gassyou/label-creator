@@ -1,6 +1,6 @@
 import { Label, PrintSetting, millimetersToPixels } from '../../editor/models/label.models';
 import { jsPDF } from 'jspdf';
-import { StaticCanvas, FabricObject } from 'fabric';
+import { StaticCanvas } from 'fabric';
 import { LabelGenerator, PdfGenerateOptions } from './label-generator.interface';
 import { PrintLayoutCalculator } from './print-layout-calculator';
 import {
@@ -16,24 +16,11 @@ import { extractFontRequests, rewriteSvgFontFamily, splitTspansByCharset } from 
 // 物理输出尺寸由 jsPDF.format [paperWidthPx, paperHeightPx] 决定。
 
 /**
- * QR/条码的 SVG 快照：用于 svg2pdf 矢量写入。
- * svgElement 始终是顶层 <svg>，不带嵌套 <g transform>，
- * 位置/尺寸由 svg2pdf options.x/y/width/height 显式控制。
- */
-interface SvgSnapshot {
-  svgElement: SVGSVGElement;
-  centerXPx: number;
-  centerYPx: number;
-  widthPx: number;
-  heightPx: number;
-}
-
-/**
  * PDF 标签生成器
  *
- * 渲染策略：
- * - 文字 / 矢量图形 / 模板背景：整张画布导 SVG → svg2pdf 矢量写入
- * - QR / 条码：独立取出原始 SVG，单独 svg2pdf 写入（矢量）
+ * 渲染策略：整张画布导 SVG → svg2pdf 一次性矢量写入。
+ * 所有元素（文本 / 矢量图形 / 背景图 / QR / 条码）的位置和尺寸
+ * 都由 fabric 在 toSVG() 时统一处理，PDF 生成器不区分元素类型。
  *
  * 单位策略：jsPDF 使用 'px' 单位，画布和 PDF 坐标都用像素，
  * 1:1 映射设计坐标，避免 mm/px 换算带来的偏差。
@@ -72,10 +59,7 @@ export class PdfLabelGenerator implements LabelGenerator {
       format: [paperWidthPx, paperHeightPx]
     });
 
-    const { canvas, widthPx, heightPx, svgHost, cache } = this.prepareRenderEnv(
-      labels[0].width,
-      labels[0].height
-    );
+    const { canvas,svgHost, cache } = this.prepareRenderEnv(labels[0].width, labels[0].height);
 
     const pageCount = PrintLayoutCalculator.getPageCount(labels.length, layout);
     let completed = 0;
@@ -155,8 +139,6 @@ export class PdfLabelGenerator implements LabelGenerator {
 
   private prepareRenderEnv(labelWidthMm: number, labelHeightMm: number): {
     canvas: StaticCanvas;
-    widthPx: number;
-    heightPx: number;
     svgHost: HTMLDivElement;
     cache: RenderCache;
   } {
@@ -166,7 +148,7 @@ export class PdfLabelGenerator implements LabelGenerator {
     const cache: RenderCache = { loaded: false, current: [] };
     const svgHost = this.createSvgHost();
     document.body.appendChild(svgHost);
-    return { canvas, widthPx, heightPx, svgHost, cache };
+    return { canvas, svgHost, cache };
   }
 
   /**
@@ -195,143 +177,17 @@ export class PdfLabelGenerator implements LabelGenerator {
     heightPxLayout: number
   ): Promise<void> {
     const { svg2pdf } = await import('svg2pdf.js');
-    await applyLabelToCanvas(canvas, label, canvas.getWidth(), canvas.getHeight(), cache);
+    await applyLabelToCanvas(canvas, label, widthPxLayout, heightPxLayout, cache);
 
-    // 1) 收集 QR / 条码 SVG 快照
-    const svgSnapshots = this.collectSvgSnapshots(canvas);
-
-    // 2) 临时从画布移除 QR / 条码，导出剩余矢量部分给 svg2pdf
-    const removed = this.detachImageObjects(canvas);
-    try {
-      const svgElement = await this.canvasToSvgElement(canvas, svgHost, pdf);
-      await svg2pdf(svgElement, pdf, {
-        x: positionPx.x,
-        y: positionPx.y,
-        width: widthPxLayout,
-        height: heightPxLayout
-      });
-    } finally {
-      this.reattachImageObjects(canvas, removed);
-    }
-
-    // 3) QR / 条码独立写入：每个都是顶层 SVG 元素，位置/尺寸由 options 显式控制
-    //    canvas px 直接 = PDF px（jsPDF unit='px'），1:1 映射设计
-    for (const snap of svgSnapshots) {
-      await svg2pdf(snap.svgElement, pdf, {
-        x: positionPx.x + (snap.centerXPx - snap.widthPx / 2),
-        y: positionPx.y + (snap.centerYPx - snap.heightPx / 2),
-        width: snap.widthPx,
-        height: snap.heightPx
-      });
-    }
-  }
-
-  // ===== QR / 条码快照 =====
-
-  private collectSvgSnapshots(canvas: StaticCanvas): SvgSnapshot[] {
-    const snapshots: SvgSnapshot[] = [];
-    for (const obj of canvas.getObjects() as any[]) {
-      if (!this.isBarcodeOrQrImage(obj)) continue;
-      obj.setCoords();
-      const src = (obj.getElement && obj.getElement()?.src) || obj.toDataURL({ format: 'png' });
-      const widthPx = obj.width * obj.scaleX;
-      const heightPx = obj.height * obj.scaleY;
-
-      console.log("widthPx",widthPx)
-      console.log("heightPx",heightPx)
-      const svgElement = this.dataUrlToSvgElement(src, widthPx, heightPx);
-
-       console.log("svgElement",svgElement)
-
-      if (!svgElement) continue;
-      snapshots.push({
-        svgElement,
-        centerXPx: obj.left,
-        centerYPx: obj.top,
-        widthPx,
-        heightPx
-      });
-    }
-    return snapshots;
-  }
-
-  /**
-   * 将 dataURL 包装为独立 <svg> 元素。
-   * - SVG dataURL：parseFromString 得到原始 <svg>，保留矢量结构
-   * - PNG/JPEG dataURL：构造 <svg><image href="..."/></svg>，svg2pdf 按位图处理
-   *
-   * viewBox/width/height 用 obj 的视觉宽高（已含 scaleX/Y），
-   * 让 svg2pdf 按 1:1 像素坐标渲染，无 mm/px 换算。
-   */
-  private dataUrlToSvgElement(
-    dataUrl: string,
-    visualWidthPx: number,
-    visualHeightPx: number
-  ): SVGSVGElement | null {
-    if (dataUrl.startsWith('data:image/svg+xml')) {
-      const decoded = this.decodeDataUrl(dataUrl);
-      const doc = new DOMParser().parseFromString(decoded, 'image/svg+xml');
-      const svg = doc.documentElement as unknown as SVGSVGElement;
-      return svg.nodeName.toLowerCase() === 'svg' ? svg : null;
-    }
-
-    if (dataUrl.startsWith('data:image/png') || dataUrl.startsWith('data:image/jpeg')) {
-      const w = Math.max(1, Math.round(visualWidthPx));
-      const h = Math.max(1, Math.round(visualHeightPx));
-
-      console.log("w",w);
-      console.log("h",h);
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-      const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-      image.setAttribute('x', '0');
-      image.setAttribute('y', '0');
-      image.setAttribute('width', String(w));
-      image.setAttribute('height', String(h));
-      image.setAttribute('href', dataUrl);
-      svg.appendChild(image);
-      return svg;
-    }
-
-    return null;
-  }
-
-  /**
-   * 解码 dataURL：去除 MIME 头，base64 → UTF-8 字符串。
-   * DOMParser 是同步 API，无需 async/Promise 包装。
-   */
-  private decodeDataUrl(dataUrl: string): string {
-    const commaIdx = dataUrl.indexOf(',');
-    if (commaIdx < 0) {
-      throw new Error('Invalid data URL');
-    }
-    const header = dataUrl.slice(0, commaIdx);
-    const payload = dataUrl.slice(commaIdx + 1);
-    if (header.includes(';base64')) {
-      return atob(payload);
-    }
-    return decodeURIComponent(payload);
-  }
-
-  // ===== 画布对象操作 =====
-
-  private isBarcodeOrQrImage(obj: any): boolean {
-    if (!obj || obj.type?.toLowerCase() !== 'image') return false;
-    return obj.elementType === 'qrcode' || obj.elementType === 'barcode';
-  }
-
-  private detachImageObjects(canvas: StaticCanvas): FabricObject[] {
-    const toRemove = (canvas.getObjects() as any[]).filter((o) => this.isBarcodeOrQrImage(o));
-    if (toRemove.length > 0) {
-      canvas.remove(...toRemove);
-    }
-    return toRemove as FabricObject[];
-  }
-
-  private reattachImageObjects(canvas: StaticCanvas, removed: FabricObject[]): void {
-    if (removed.length > 0) {
-      canvas.add(...removed);
-    }
+    // 整张画布 → SVG → svg2pdf：所有元素（文本/图形/背景/QR/条码）
+    // 由 fabric 在 toSVG() 时统一输出位置和尺寸，生成器不区分类型。
+    const svgElement = await this.canvasToSvgElement(canvas, svgHost, pdf);
+    await svg2pdf(svgElement, pdf, {
+      x: positionPx.x,
+      y: positionPx.y,
+      width: widthPxLayout,
+      height: heightPxLayout
+    });
   }
 
   // ===== 画布 → SVG =====
