@@ -111,24 +111,30 @@ export class LabelDataBindingService {
     const bindingValue = obj.bindingValue || '';
     const resolvedValue = this.resolveBindingValue(bindingValue, data, unbound);
 
-    const widthPx = Math.round((obj.width || 100) * (obj.scaleX || 1));
-    const heightPx = Math.round((obj.height || 50) * (obj.scaleY || 1));
 
     if (elementType === 'barcode') {
       const format = obj.barcodeFormat || 'CODE128';
       const showText = obj.showText ?? true;
       const color = obj.foregroundColor || '#000000';
 
-      // 把视觉宽传给 generateBarcodeSVG，用于重写 SVG viewBox 比例
+      // 高度：传 obj.height × obj.scaleY 给 JsBarcode，让条本身高度 = 视觉高度，
+      // 即使 scaleY ≠ 1，条也不变形（只是数字区按比例缩小）。
+      const scaleY = obj.scaleY || 1;
+      const barcodeHeight = Math.round((obj.height || 80) * scaleY);
+
+      // 宽度：fabric 视觉宽度 = element.naturalWidth × obj.scaleX，
+      // 要让视觉宽度 = obj.width，SVG naturalWidth 必须 = obj.width / obj.scaleX。
+      const scaleX = obj.scaleX || 1;
+      const targetNaturalWidth = (obj.width || 200) / scaleX;
       const dataUrl = generateBarcodeSVG(
         resolvedValue,
         format,
-        heightPx,
+        barcodeHeight,
         showText,
         color,
-        widthPx
+        targetNaturalWidth
       );
-
+      console.log(dataUrl);
       return { ...obj, src: dataUrl };
     }
 
@@ -178,12 +184,19 @@ export class LabelDataBindingService {
 /**
  * 生成条形码 SVG。
  *
- * JsBarcode 输出的 SVG viewBox 宽度由 value 字符数决定（总条宽 + margin），
- * 与目标视觉宽度无关。这里生成后改写 viewBox 让它等于目标尺寸（width × height），
- * 配合 preserveAspectRatio="none" 使条形码按比例绘制，填进 PDF 框时不被拉伸。
+ * 关键约束：fabric 渲染 image 元素时用 element.naturalWidth × obj.scaleX
+ * 计算视觉宽度。要让 fabric 视觉宽度 = obj.width（用户设计意图），SVG 的
+ * naturalWidth 必须等于 obj.width / obj.scaleX。
  *
- * @param width 视觉宽度（px），用于重写 SVG viewBox
- * @param height 视觉高度（px），传给 JsBarcode 控制条高
+ * JsBarcode 默认 barWidth=1 输出 SVG 宽度 ≈ (字符数 × 11) + margin × 2，
+ * 由字符数决定。这里先用 barWidth=1 探测一次算出总条数，再算 targetBarWidth
+ * 让最终输出 = targetNaturalWidth。barWidth 受 [MIN, MAX] 限制：
+ * - 最小 1.5px 保证扫码器可读
+ * - 最大 6px 避免条过粗、视觉空旷（内容少时尤其明显）
+ * 超出范围时按极限值输出，SVG 实际宽度可能略小于或略大于 targetNaturalWidth——
+ * 这是为了保证可扫性、可视性之间的平衡。
+ *
+ * @param targetNaturalWidth SVG 自身的像素宽度（= fabric 的 element.naturalWidth）
  */
 function generateBarcodeSVG(
   value: string,
@@ -191,26 +204,42 @@ function generateBarcodeSVG(
   height: number,
   showText: boolean,
   color: string,
-  width?: number
+  targetNaturalWidth?: number
 ): string {
+  // barWidth 上下限：保证可扫性与可视性
+  const MIN_BAR_WIDTH = 1.5;
+  const MAX_BAR_WIDTH = 6;
+  const MARGIN = 2;
+
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    (JsBarcode as any)(svg, value, {
+    const baseOpts: any = {
       format: format,
-      width: 1,
       height: height,
       displayValue: showText,
       fontColor: color,
-      margin: 2
-    });
+      margin: MARGIN
+    };
 
-    // 重写 viewBox/width/height：让 SVG 坐标系比例 = 视觉尺寸比例，
-    // 条形码填进 PDF 框时不被拉伸。
-    if (width && width > 0 && height > 0) {
-      svg.setAttribute('width', String(width));
-      svg.setAttribute('height', String(height));
-      svg.setAttribute('preserveAspectRatio', 'none');
+    if (targetNaturalWidth && targetNaturalWidth > 0) {
+      // 探测一次：用 barWidth=1、displayValue=false 看 JsBarcode 输出多宽
+      // （关掉 displayValue 是为了探测时不绘制数字，避免影响 width 测量）。
+      // 公式：outputWidth = totalBars × barWidth + margin × 2
+      const probe = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      (JsBarcode as any)(probe, value, { ...baseOpts, width: 1, displayValue: false });
+      const probeWidth = parseFloat(probe.getAttribute('width') || '0');
+      const probeBars = probeWidth - MARGIN * 2; // totalBars × 1
+
+      // targetBarWidth = (targetNaturalWidth - margin × 2) / probeBars
+      // 受 [MIN, MAX] 限制
+      const rawBarWidth = (targetNaturalWidth - MARGIN * 2) / probeBars;
+      const finalBarWidth = Math.min(MAX_BAR_WIDTH, Math.max(MIN_BAR_WIDTH, rawBarWidth));
+      (JsBarcode as any)(svg, value, { ...baseOpts, width: finalBarWidth });
+    } else {
+      (JsBarcode as any)(svg, value, { ...baseOpts, width: 1 });
     }
+
+    // JsBarcode 输出的 viewBox/width/height 已经是像素单位，直接用。
 
     const serializer = new XMLSerializer();
     const svgString = serializer.serializeToString(svg);
