@@ -134,7 +134,7 @@ export class LabelDataBindingService {
         color,
         targetNaturalWidth
       );
-      console.log(dataUrl);
+
       return { ...obj, src: dataUrl };
     }
 

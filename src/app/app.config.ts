@@ -67,6 +67,6 @@ export const appConfig: ApplicationConfig = {
       FileImageOutlineIcon
     ]),
     provideNzI18n(zh_CN),
-    { provide: TemplateStorageService, useClass: LocalStorageTemplateService }
+    { provide: TemplateStorageService, useClass: HttpTemplateService }
   ]
 };
